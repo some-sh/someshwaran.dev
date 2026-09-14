@@ -4,16 +4,17 @@ Personal site and resume manager, built with FastAPI and React. Maintains multip
 versions, exports to PDF/DOCX, and supports remote editing via an MCP server for LLM clients
 like Claude.
 
-See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. Phase 5
-(frontend) is done — public + admin pages are wired to the resume API — plus one piece of phase 8
-pulled forward early (at the user's request): the backend can serve the built frontend itself,
-one origin, one deploy (`scripts/deploy.sh`). Playwright E2E (phase 6), the MCP server (phase 7),
-and the rest of phase 8 (a CI-gated deploy workflow) are still ahead.
+See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. Phase 6
+(Playwright E2E) is done — plus one piece of phase 8 pulled forward early (at the user's
+request): the backend can serve the built frontend itself, one origin, one deploy
+(`scripts/deploy.sh`). The MCP server (phase 7) and the rest of phase 8 (a CI-gated deploy
+workflow) are still ahead.
 
 ## Layout
 
 - `backend/` — FastAPI app (Python, managed with [uv](https://docs.astral.sh/uv/))
 - `frontend/` — React + Vite + shadcn/ui (Radix primitives) + TanStack Router + TanStack Query
+- `e2e/` — Playwright end-to-end tests against the real, built app
 
 ## Backend
 
@@ -124,10 +125,35 @@ precedence for `fastapi deploy` — see that file. Local dev still runs the two 
 (`npm run dev` + `uv run fastapi dev`) on different ports, which is what the CORS config above is
 for; nothing here needs it once same-origin in production.
 
+## E2E
+
+```bash
+cd e2e
+npm install
+npm test               # builds the frontend, starts the real backend, runs the suite
+npm run format:check   # prettier
+```
+
+`npm test` drives the actual app: `run-server.sh` builds `frontend/`, copies the build into
+`backend/frontend_dist/` (same mechanism as `scripts/deploy.sh`), and starts `uvicorn` against a
+disposable temp SQLite file — Playwright's `webServer` config spawns and health-checks it
+automatically, so there's nothing to start by hand first. Tests run against one shared app
+instance with `workers: 1`, since the suite exercises real global state (in particular, the
+single "default resume" flag) rather than mocking the backend.
+
+- `tests/admin-auth.spec.ts` — sign-in/redirect flows (no key, wrong key, correct key)
+- `tests/resume-journey.spec.ts` — one continuous journey (`test.step` per stage, not independent
+  tests, since each stage depends on the previous one's state): create a resume, confirm it isn't
+  public yet, set it default, confirm the public page now renders it, clone it, delete the clone,
+  delete the original, confirm the public page is empty again
+
+e2e has no eslint/typecheck of its own — it's a test suite, not application code — but format
+consistency is still enforced (prettier, matching frontend's style).
+
 ## Pre-commit
 
-A single [pre-commit](https://pre-commit.com/) config at the repo root covers both languages
-(ruff/mypy for Python, eslint/prettier for JS/TS):
+A single [pre-commit](https://pre-commit.com/) config at the repo root covers all three
+directories (ruff/mypy for Python, eslint/prettier for `frontend/`, prettier for `e2e/`):
 
 ```bash
 pre-commit install
@@ -136,5 +162,8 @@ pre-commit run --all-files
 
 ## CI
 
-Every pull request runs lint + typecheck + unit tests for both `backend/` and `frontend/`
-(see `.github/workflows/ci.yml`). E2E (Playwright) and deploy workflows land in later phases.
+Every pull request runs lint + typecheck + unit tests for both `backend/` and `frontend/`. E2E
+(Playwright) runs only on merge to `main`, per CLAUDE.md's testing bar — it drives the real app
+rather than mocks, so it's slower and shares mutable state across the suite, which makes it a
+poor fit for running on every PR push. See `.github/workflows/ci.yml`. The deploy workflow lands
+in phase 8.
