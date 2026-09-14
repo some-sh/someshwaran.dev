@@ -42,3 +42,13 @@ repos:
         files: ^frontend/
         exclude: ^frontend/(dist|coverage|node_modules)/
         pass_filenames: false
+
+      - id: prettier-e2e
+        name: prettier (e2e)
+        # e2e has no eslint/typecheck of its own — it's a Playwright suite,
+        # not application code — but format consistency is still checked.
+        entry: bash -c 'cd e2e && npx prettier --check .'
+        language: system
+        files: ^e2e/
+        exclude: ^e2e/(node_modules|playwright-report|test-results)/
+        pass_filenames: false
