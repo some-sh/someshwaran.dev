@@ -4,11 +4,11 @@ Personal site and resume manager, built with FastAPI and React. Maintains multip
 versions, exports to PDF/DOCX, and supports remote editing via an MCP server for LLM clients
 like Claude.
 
-See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. Phase 6
-(Playwright E2E) is done — plus one piece of phase 8 pulled forward early (at the user's
+See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. Phase 7
+(the MCP server) is done — plus one piece of phase 8 pulled forward early (at the user's
 request): the backend can serve the built frontend itself, one origin, one deploy
-(`scripts/deploy.sh`). The MCP server (phase 7) and the rest of phase 8 (a CI-gated deploy
-workflow) are still ahead.
+(`scripts/deploy.sh`). The rest of phase 8 (a CI-gated deploy workflow) and phase 9 (polish,
+open-source prep) are still ahead.
 
 ## Layout
 
@@ -61,6 +61,32 @@ Every route under `/api/admin/*` requires `Authorization: Bearer <key>`.
 All PDF/DOCX output — public and admin alike — renders through the single pipeline in
 `app/services/export_service.py`, per CLAUDE.md's "one schema, one renderer" principle: there
 is exactly one place resume content becomes a document per format.
+
+### MCP server
+
+A remote MCP server (`app/mcp_server.py`, built on the official
+[`mcp`](https://github.com/modelcontextprotocol/python-sdk) SDK's streamable HTTP transport)
+exposes the same resume actions as the admin API above to LLM clients like Claude — every tool
+is a thin wrapper over `app/services/resume_service.py`, the same service the REST routes call,
+per CLAUDE.md's "one schema, one renderer" principle again: an MCP tool response is just another
+renderer over the one underlying schema.
+
+- Mounted at `/api/mcp/` (trailing slash — the bare path 307-redirects there), on the same origin
+  and same admin API key as everything else. Point an MCP client's URL at
+  `http://<host>/api/mcp/` with `Authorization: Bearer <key>`.
+- Tools: `list_resumes`, `get_resume`, `get_default_resume`, `create_resume`, `update_resume`,
+  `delete_resume`, `clone_resume`, `set_default_resume` — deliberately not PDF/DOCX export; a
+  binary download is a poor fit for a tool result in a chat client, so that's left to the REST
+  API and public site for now.
+- Auth is still the one mechanism from `app/core/security.py`, just enforced a layer lower: the
+  MCP server is a mounted Starlette app, not a set of FastAPI path operations, so there's no
+  request to hang a `Depends(require_admin)` off of. `AdminBearerAuthMiddleware` wraps the mount
+  instead, checking the same `is_valid_admin_key` function `require_admin` calls.
+- `app/mcp_server.py`'s `build_mcp_server()` is a factory, not a module-level singleton: an
+  `MCPServer`'s streamable-HTTP session manager can only be started once per instance, so
+  `app/main.py`'s lifespan builds a fresh one on every app startup — see that function's
+  docstring for why a singleton would break this app's own test suite (though never a real
+  deployment, which only starts once per process).
 
 ### CORS
 

@@ -8,10 +8,13 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.types import Receive, Scope, Send
 
 from app.api.admin import router as admin_router
 from app.api.public import router as public_resumes_router
 from app.core.config import get_settings
+from app.core.security import AdminBearerAuthMiddleware
+from app.mcp_server import build_mcp_asgi_app, build_mcp_server
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -29,10 +32,37 @@ def _run_migrations() -> None:
     command.upgrade(Config(str(_BACKEND_DIR / "alembic.ini")), "head")
 
 
+class _MCPDispatch:
+    """Forwards each request to whichever MCP ASGI app app.state.mcp_asgi_app
+    currently holds.
+
+    app.mount(...) below bakes in a fixed ASGI callable at mount time (this
+    object), but the *actual* MCP server + ASGI app underneath it is
+    rebuilt fresh on every lifespan startup (see app/mcp_server.py's
+    docstring for why) — so the mount needs this indirection to always
+    reach the current one instead of a stale reference to the previous
+    startup's, which would be running a session manager that already
+    shut down.
+    """
+
+    def __init__(self, app: FastAPI) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        await self._app.state.mcp_asgi_app(scope, receive, send)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _run_migrations()
-    yield
+    mcp_server = build_mcp_server()
+    app.state.mcp_asgi_app = build_mcp_asgi_app(mcp_server)
+    # A mounted sub-app's own lifespan never runs (Starlette doesn't nest
+    # lifespans under Mount) — the session manager has to be entered here
+    # instead, or the MCP server's first request fails. See
+    # app/mcp_server.py and the SDK's docs/run/asgi.md.
+    async with mcp_server.session_manager.run():
+        yield
 
 
 app = FastAPI(title="someshwaran.dev API", lifespan=lifespan)
@@ -48,6 +78,10 @@ app.add_middleware(
 )
 app.include_router(admin_router)
 app.include_router(public_resumes_router)
+# Same admin API key as every other admin route (see AdminBearerAuthMiddleware
+# and app/mcp_server.py's docstring for why that check happens here, at the
+# ASGI layer, rather than through FastAPI's Depends(require_admin)).
+app.mount("/api/mcp", AdminBearerAuthMiddleware(_MCPDispatch(app)))
 
 
 @app.get("/health")

@@ -8,6 +8,9 @@ dependencies = [
     # [standard] extra pulls in uvicorn + the fastapi-cli, needed for both
     # `fastapi dev` locally and `fastapi deploy` to FastAPI Cloud (see CLAUDE.md).
     "fastapi[standard]>=0.115",
+    # >=2.0 since the SDK's 2.x line renamed FastMCP -> MCPServer and is what
+    # app/mcp_server.py is written against; see that module.
+    "mcp>=2.2.0",
     "pydantic-settings>=2.15.0",
     "python-docx>=1.2.0",
     "reportlab>=5.0.1",
