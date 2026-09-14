@@ -5,8 +5,8 @@ versions, exports to PDF/DOCX, and supports remote editing via an MCP server for
 like Claude.
 
 See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. This repo
-is currently at phase 3 (auth) — the data model and CRUD service exist, but the resume API
-itself (phase 4) and frontend wiring (phase 5) don't yet.
+is currently at phase 4 (resume API) — the backend is feature-complete for managing and
+exporting resumes; frontend wiring (phase 5) is next.
 
 ## Layout
 
@@ -42,8 +42,22 @@ cp .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(32))"  # paste into APP_ADMIN_API_KEY
 ```
 
-Admin routes (currently just `GET /api/admin/whoami`, a wiring smoke test — real admin
-actions land in phase 4) require `Authorization: Bearer <key>`.
+Every route under `/api/admin/*` requires `Authorization: Bearer <key>`.
+
+### Resume API
+
+- `GET /api/resumes/default` — the current default resume, public, no auth (404 until one is set)
+- `GET /api/resumes/default/export.pdf` / `.docx` — same, as a download
+- `POST /api/admin/resumes` — create
+- `GET /api/admin/resumes` — list (summaries)
+- `GET|PATCH|DELETE /api/admin/resumes/{id}` — read / partial update / delete
+- `POST /api/admin/resumes/{id}/clone` — deep copy, never defaulted
+- `POST /api/admin/resumes/{id}/set-default` — mark as the one default, atomically unsetting any other
+- `GET /api/admin/resumes/{id}/export.pdf` / `.docx` — export any resume, not just the default
+
+All PDF/DOCX output — public and admin alike — renders through the single pipeline in
+`app/services/export_service.py`, per CLAUDE.md's "one schema, one renderer" principle: there
+is exactly one place resume content becomes a document per format.
 
 ## Frontend
 

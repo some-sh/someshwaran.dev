@@ -1,16 +1,19 @@
-"""Input schemas for the resume CRUD service.
+"""Schemas for the resume CRUD service and the resume API.
 
-These are plain Pydantic models (not SQLModel tables) describing the
-shape of data the service accepts. Output is the ORM models themselves
-(app.models.resume) — dedicated read/response schemas belong to the API
-layer in phase 4, once there's a wire format to stabilize.
+Input schemas (``*Input``, ``ResumeCreate``, ``ResumeUpdate``) are plain
+Pydantic models describing what the service accepts. Read schemas
+(``*Read``, ``ResumeSummary``) describe what the API returns — built with
+``from_attributes=True`` so a route can hand a route handler an ORM object
+straight out of app.models.resume and let FastAPI's response_model
+conversion do the rest, without ever exposing the ORM models (or their
+SQLAlchemy relationship machinery) over the wire directly.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class PersonalInfoInput(BaseModel):
@@ -87,3 +90,66 @@ class ResumeUpdate(BaseModel):
     projects: list[ProjectInput] | None = None
     education: list[EducationInput] | None = None
     certifications: list[CertificationInput] | None = None
+
+
+class PersonalInfoRead(PersonalInfoInput):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SkillRead(SkillInput):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExperienceRead(ExperienceInput):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectRead(ProjectInput):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EducationRead(EducationInput):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CertificationRead(CertificationInput):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResumeRead(BaseModel):
+    """Full resume, nested content and all — what admin detail routes and
+    the public default-resume route return."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    is_default: bool
+    summary: str
+    created_at: datetime
+    updated_at: datetime
+    personal_info: PersonalInfoRead | None
+    skills: list[SkillRead]
+    experience: list[ExperienceRead]
+    projects: list[ProjectRead]
+    education: list[EducationRead]
+    certifications: list[CertificationRead]
+
+
+class ResumeSummary(BaseModel):
+    """One row of the admin resume list — enough to pick a resume to open,
+    clone, or set as default without paying for the nested content."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
