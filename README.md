@@ -4,9 +4,11 @@ Personal site and resume manager, built with FastAPI and React. Maintains multip
 versions, exports to PDF/DOCX, and supports remote editing via an MCP server for LLM clients
 like Claude.
 
-See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. This repo
-is currently at phase 5 (frontend) — public + admin pages are wired to the resume API.
-Playwright E2E (phase 6) and the MCP server (phase 7) are next.
+See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. Phase 5
+(frontend) is done — public + admin pages are wired to the resume API — plus one piece of phase 8
+pulled forward early (at the user's request): the backend can serve the built frontend itself,
+one origin, one deploy (`scripts/deploy.sh`). Playwright E2E (phase 6), the MCP server (phase 7),
+and the rest of phase 8 (a CI-gated deploy workflow) are still ahead.
 
 ## Layout
 
@@ -107,9 +109,20 @@ backend's `require_admin` (see CLAUDE.md's Auth section).
 - Shadcn's own CLI can't reach `ui.shadcn.com` from this network, so `src/components/ui/*.tsx`
   are hand-authored to match its canonical "new-york" output rather than generated.
 
-Serving the built frontend from FastAPI itself (`StaticFiles`, one origin, one deploy) is a
-phase 8 (deploy) decision, not done yet — CORS above is what makes local dev work today, with
-the two apps on separate ports.
+### Deploying (backend + frontend, one origin)
+
+```bash
+./scripts/deploy.sh
+```
+
+Builds the frontend, copies it into `backend/frontend_dist/`, then runs `fastapi deploy` from
+`backend/`. `app/main.py` serves it via FastAPI's own `app.frontend()` (checked only after every
+real `/api/*` and `/health` route — it can never shadow them), falling back to `index.html` for
+client-side routes so a hard refresh on `/admin/login` works. `backend/frontend_dist/` is
+gitignored (it's a build output) but explicitly un-ignored in `.fastapicloudignore`, which takes
+precedence for `fastapi deploy` — see that file. Local dev still runs the two apps separately
+(`npm run dev` + `uv run fastapi dev`) on different ports, which is what the CORS config above is
+for; nothing here needs it once same-origin in production.
 
 ## Pre-commit
 

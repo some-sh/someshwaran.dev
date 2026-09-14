@@ -1,0 +1,5 @@
+# `fastapi deploy` respects .gitignore by default, which is right for
+# everything else in that file — except frontend_dist/: it's a build
+# output (never committed), but scripts/deploy.sh generates it fresh
+# right before deploying and it needs to actually be uploaded.
+!frontend_dist/
