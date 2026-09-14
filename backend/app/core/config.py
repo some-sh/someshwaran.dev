@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     #   python -c "import secrets; print(secrets.token_urlsafe(32))"
     admin_api_key: str | None = None
 
+    # Comma-separated, not a JSON list: keeps a plain env var usable
+    # (APP_CORS_ALLOWED_ORIGINS="https://someshwaran.dev,http://localhost:5173")
+    # instead of fighting pydantic-settings' JSON parsing for list fields.
+    # Defaults to the Vite dev server so local frontend+backend work out of
+    # the box; add the deployed frontend origin once phase 8 picks one.
+    cors_allowed_origins: str = "http://localhost:5173"
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:

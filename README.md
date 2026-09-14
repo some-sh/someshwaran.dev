@@ -5,13 +5,13 @@ versions, exports to PDF/DOCX, and supports remote editing via an MCP server for
 like Claude.
 
 See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. This repo
-is currently at phase 4 (resume API) — the backend is feature-complete for managing and
-exporting resumes; frontend wiring (phase 5) is next.
+is currently at phase 5 (frontend) — public + admin pages are wired to the resume API.
+Playwright E2E (phase 6) and the MCP server (phase 7) are next.
 
 ## Layout
 
 - `backend/` — FastAPI app (Python, managed with [uv](https://docs.astral.sh/uv/))
-- `frontend/` — React + Vite + shadcn/ui app
+- `frontend/` — React + Vite + shadcn/ui (Radix primitives) + TanStack Router + TanStack Query
 
 ## Backend
 
@@ -59,10 +59,17 @@ All PDF/DOCX output — public and admin alike — renders through the single pi
 `app/services/export_service.py`, per CLAUDE.md's "one schema, one renderer" principle: there
 is exactly one place resume content becomes a document per format.
 
+### CORS
+
+The frontend is served from its own origin, so the browser needs an explicit allowlist:
+`cors_allowed_origins` (`APP_CORS_ALLOWED_ORIGINS`, comma-separated) defaults to the Vite dev
+server, `http://localhost:5173`. Add the deployed frontend's origin once phase 8 picks one.
+
 ## Frontend
 
 ```bash
 cd frontend
+cp .env.example .env.local   # point VITE_API_BASE_URL at the backend, e.g. http://localhost:8000
 npm install
 npm run lint          # eslint
 npm run format:check  # prettier
@@ -70,6 +77,39 @@ npm run typecheck     # tsc
 npm run test          # vitest
 npm run dev           # run locally
 ```
+
+- `/` — public resume page: renders the current default resume (`GET /api/resumes/default`)
+  with PDF/DOCX download links. Shows a plain message, not an error, when no default is set yet.
+- `/admin/login` — paste the backend's `APP_ADMIN_API_KEY`; verified against `GET
+  /api/admin/whoami` before it's saved to `localStorage`. Every admin page clears a key the
+  moment a request 401s (revoked/wrong) and redirects back here.
+- `/admin` — resume list: create, clone, set default, export, delete.
+- `/admin/resumes/new` / `/admin/resumes/:id` — the resume editor — one form for every section
+  (personal info, skills, experience, projects, education, certifications), each repeatable
+  section with its own add/remove rows. Saving always replaces each nested collection wholesale
+  (matching `resume_service.update_resume`'s semantics), not a per-row PATCH.
+
+Nothing here builds its own auth system — `src/lib/api.ts` is the one place the admin API key is
+read from `localStorage` and attached as `Authorization: Bearer <key>`, same mechanism as the
+backend's `require_admin` (see CLAUDE.md's Auth section).
+
+### Frontend architecture
+
+- **Routing** — `src/router.tsx`, TanStack Router with a code-based route tree (not file-based:
+  no codegen step or generated file needed for six routes). Auth is enforced at the route level,
+  not per-page: the `/admin` layout route's `beforeLoad` redirects to `/admin/login` when no key
+  is stored, and `/admin/login`'s own `beforeLoad` redirects the other way when one already is.
+- **Server state** — `src/lib/queries.ts`, TanStack Query hooks over the plain fetch functions in
+  `api.ts`. The `QueryClient` (`src/lib/queryClient.ts`) centralizes 401 handling in one
+  `queryCache`/`mutationCache` `onError`, instead of every page repeating the same try/catch.
+- **UI primitives** — shadcn/ui components built on Radix (not shadcn's newer Base UI option):
+  Radix is what's already proven out here since phase 1, and Base UI is still pre-1.0.
+- Shadcn's own CLI can't reach `ui.shadcn.com` from this network, so `src/components/ui/*.tsx`
+  are hand-authored to match its canonical "new-york" output rather than generated.
+
+Serving the built frontend from FastAPI itself (`StaticFiles`, one origin, one deploy) is a
+phase 8 (deploy) decision, not done yet — CORS above is what makes local dev work today, with
+the two apps on separate ports.
 
 ## Pre-commit
 
