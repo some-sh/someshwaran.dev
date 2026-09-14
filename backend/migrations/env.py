@@ -8,6 +8,7 @@ from sqlmodel import SQLModel
 # hand it to Alembic for autogenerate.
 import app.models  # noqa: F401,E402
 from app.core.config import get_settings  # noqa: E402
+from app.db import ensure_sqlite_directory_exists  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -20,7 +21,12 @@ if config.config_file_name is not None:
 
 # Migrations always target the same database as the running app —
 # read the URL from app settings instead of hardcoding it in alembic.ini.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+_database_url = get_settings().database_url
+config.set_main_option("sqlalchemy.url", _database_url)
+# Same reason app.db.get_engine() calls this: SQLite won't create a
+# missing ./data/ directory on its own, and this is often the first thing
+# to try connecting (e.g. on a fresh deploy, before the app itself does).
+ensure_sqlite_directory_exists(_database_url)
 
 target_metadata = SQLModel.metadata
 
