@@ -54,3 +54,22 @@ app.include_router(public_resumes_router)
 def health_check() -> dict[str, str]:
     """Liveness probe used by CI, deploy checks, and local smoke tests."""
     return {"status": "ok"}
+
+
+def _mount_frontend_if_built(app: FastAPI, directory: Path) -> None:
+    """Serves the built frontend (frontend/dist, copied to
+    backend/frontend_dist by scripts/deploy.sh before `fastapi deploy` —
+    see that script and README) as a single-page app at "/". FastAPI's
+    own app.frontend() checks real path operations first and falls back
+    to index.html only for unmatched GET/HEAD requests, so this can
+    never shadow /api/* or /health regardless of where it's registered.
+
+    A no-op when the directory doesn't exist, so the API keeps working
+    standalone in local dev, CI, and every existing test — none of which
+    build the frontend first.
+    """
+    if directory.is_dir():
+        app.frontend("/", directory=directory, fallback="auto")
+
+
+_mount_frontend_if_built(app, _BACKEND_DIR / "frontend_dist")

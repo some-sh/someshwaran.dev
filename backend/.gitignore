@@ -9,3 +9,7 @@ data/
 *.db
 .env
 .env.local
+
+# Built frontend, copied here by scripts/deploy.sh before `fastapi deploy`
+# (see .fastapicloudignore — un-ignored there so it still gets uploaded).
+frontend_dist/
