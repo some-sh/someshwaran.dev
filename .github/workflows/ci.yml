@@ -30,8 +30,18 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check .
 
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
       - name: Typecheck (mypy)
         run: uv run mypy app
+
+      - name: Migrations apply cleanly, match models
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+        env:
+          APP_DATABASE_URL: sqlite:///./ci-check.db
 
       - name: Unit tests (pytest)
         run: uv run pytest

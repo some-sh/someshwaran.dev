@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "someshwaran.dev backend: FastAPI app + resume manager API"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic>=1.20.0",
     # [standard] extra pulls in uvicorn + the fastapi-cli, needed for both
     # `fastapi dev` locally and `fastapi deploy` to FastAPI Cloud (see CLAUDE.md).
     "fastapi[standard]>=0.115",
+    "pydantic-settings>=2.15.0",
+    "sqlmodel>=0.0.42",
 ]
 
 [dependency-groups]

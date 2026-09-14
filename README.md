@@ -5,8 +5,8 @@ versions, exports to PDF/DOCX, and supports remote editing via an MCP server for
 like Claude.
 
 See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. This repo
-is currently at phase 1 (scaffolding) — no real features yet, just a green CI pipeline on a
-minimal skeleton.
+is currently at phase 2 (data model + migrations + CRUD service) — no API/auth/frontend
+wiring to the data yet.
 
 ## Layout
 
@@ -17,12 +17,19 @@ minimal skeleton.
 
 ```bash
 cd backend
-uv sync --dev        # install deps
-uv run ruff check .  # lint
-uv run mypy app      # typecheck
-uv run pytest        # unit tests
+uv sync --dev                   # install deps
+uv run ruff check .             # lint
+uv run ruff format --check .    # format check
+uv run mypy app                 # typecheck
+uv run pytest                   # unit + integration tests
+uv run alembic upgrade head     # apply migrations (creates ./data/app.db)
+uv run alembic revision --autogenerate -m "..."  # after changing a model
 uv run fastapi dev app/main.py  # run locally
 ```
+
+Config (DB URL, etc.) comes from `app/core/config.py`, overridable via `APP_`-prefixed env
+vars or a `backend/.env` file — the same settings both the app and Alembic's `env.py` read,
+so migrations always target the database the app actually uses.
 
 ## Frontend
 
