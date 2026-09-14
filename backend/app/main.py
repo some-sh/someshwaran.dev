@@ -1,12 +1,11 @@
-"""FastAPI application entrypoint.
-
-Phase 1 scaffolding only — no data model, auth, or resume routes yet.
-Those land in later phases per CLAUDE.md's phase plan.
-"""
+"""FastAPI application entrypoint."""
 
 from fastapi import FastAPI
 
+from app.api.admin import router as admin_router
+
 app = FastAPI(title="someshwaran.dev API")
+app.include_router(admin_router)
 
 
 @app.get("/health")

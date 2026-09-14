@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/app.db"
     db_echo: bool = False
 
+    # Shared secret for the one admin auth mechanism (see app/core/security.py).
+    # None by default so a deployment with no key configured fails closed
+    # instead of silently trusting any bearer token. Generate one with:
+    #   python -c "import secrets; print(secrets.token_urlsafe(32))"
+    admin_api_key: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
