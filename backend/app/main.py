@@ -7,9 +7,11 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin import router as admin_router
 from app.api.public import router as public_resumes_router
+from app.core.config import get_settings
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -34,6 +36,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="someshwaran.dev API", lifespan=lifespan)
+# The frontend (phase 5) is served from its own origin (Vite dev server
+# locally; a separate static host once deployed), not this API's — the
+# browser needs an explicit allowlist rather than same-origin defaults.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_allowed_origins_list,
+    allow_credentials=False,  # auth is a bearer header, not cookies
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(admin_router)
 app.include_router(public_resumes_router)
 
