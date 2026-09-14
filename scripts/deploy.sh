@@ -3,8 +3,12 @@
 # app/main.py's app.frontend() mount and backend/.fastapicloudignore),
 # then deploys the backend — which now serves the API and the frontend
 # from the same origin. Run from anywhere; only step 3 talks to FastAPI
-# Cloud, and it uses whatever `fastapi` CLI session is already logged
-# in on this machine.
+# Cloud. Used both for a manual local deploy (an already-logged-in
+# `fastapi` CLI session on this machine — see README's Auth/Deploying
+# sections) and by the CI deploy job in .github/workflows/ci.yml (which
+# has no login session, so it sets FASTAPI_CLOUD_TOKEN/FASTAPI_CLOUD_APP_ID
+# instead — `fastapi deploy` picks either up) — one deploy procedure, not
+# a CI-only copy of it that can drift.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -136,3 +136,45 @@ jobs:
           name: playwright-report
           path: e2e/playwright-report/
           retention-days: 7
+
+  # Gated on every other job per CLAUDE.md ("deploy workflow gated on all
+  # checks") — needs: implies this only runs once backend, frontend, and
+  # e2e have all *succeeded* (a skipped or failed dependency skips this
+  # job too, by default). On a pull_request push, e2e is skipped (see
+  # above), so this job is too — the `if:` below is what actually keeps
+  # it off pull requests; the needs-chain is what keeps it off a red or
+  # skipped push.
+  deploy:
+    name: Deploy to FastAPI Cloud
+    needs: [backend, frontend, e2e]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      # Builds the frontend, copies it into backend/frontend_dist/, and
+      # runs `fastapi deploy` — the exact same script a local manual
+      # deploy uses (see README's Deploying section), so there's one
+      # deploy procedure, not a CI-only copy of it that can drift.
+      - name: Deploy
+        run: ./scripts/deploy.sh
+        env:
+          FASTAPI_CLOUD_TOKEN: ${{ secrets.FASTAPI_CLOUD_TOKEN }}
+          FASTAPI_CLOUD_APP_ID: ${{ secrets.FASTAPI_CLOUD_APP_ID }}

@@ -4,17 +4,16 @@ Personal site and resume manager, built with FastAPI and React. Maintains multip
 versions, exports to PDF/DOCX, and supports remote editing via an MCP server for LLM clients
 like Claude.
 
-See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. Phase 7
-(the MCP server) is done — plus one piece of phase 8 pulled forward early (at the user's
-request): the backend can serve the built frontend itself, one origin, one deploy
-(`scripts/deploy.sh`). The rest of phase 8 (a CI-gated deploy workflow) and phase 9 (polish,
-open-source prep) are still ahead.
+See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase plan. Phase 8
+(deploy to FastAPI Cloud, gated on CI, with a Dockerfile kept as a fallback) is done. Phase 9
+(polish, multiple templates, open-source prep) is still ahead.
 
 ## Layout
 
 - `backend/` — FastAPI app (Python, managed with [uv](https://docs.astral.sh/uv/))
 - `frontend/` — React + Vite + shadcn/ui (Radix primitives) + TanStack Router + TanStack Query
 - `e2e/` — Playwright end-to-end tests against the real, built app
+- `Dockerfile` — Docker fallback for FastAPI Cloud (see Deploying, below)
 
 ## Backend
 
@@ -151,6 +150,40 @@ precedence for `fastapi deploy` — see that file. Local dev still runs the two 
 (`npm run dev` + `uv run fastapi dev`) on different ports, which is what the CORS config above is
 for; nothing here needs it once same-origin in production.
 
+#### CI-gated deploy
+
+`.github/workflows/ci.yml`'s `deploy` job runs this same script on every push to `main`, gated
+(via `needs:`) on the `backend`, `frontend`, and `e2e` jobs all succeeding first — a red or
+skipped check never reaches FastAPI Cloud. It authenticates with two repo secrets instead of an
+interactive `fastapi login` session:
+
+```bash
+cd backend
+uv run fastapi login                    # opens a browser once, locally
+uv run fastapi cloud apps list          # note the app's ID (FASTAPI_CLOUD_APP_ID)
+uv run fastapi cloud tokens create --app-id <id>   # prints a deploy token (FASTAPI_CLOUD_TOKEN)
+```
+
+Set both as repository secrets under **Settings → Secrets and variables → Actions** — this is
+the one manual, one-time step here that only the repo owner can do (an agent has no FastAPI
+Cloud login to provision a token from). `uv run fastapi cloud ci print-workflow` prints FastAPI
+Cloud's own canonical version of this job, for reference or if it ever needs regenerating.
+
+#### Docker fallback
+
+CLAUDE.md calls for staying Docker-friendly regardless of FastAPI Cloud, so the root `Dockerfile`
+builds and serves the same app `scripts/deploy.sh` ships — frontend baked into
+`backend/frontend_dist`, one image, one origin:
+
+```bash
+docker build -t someshwaran-dev .
+docker run -p 8000:8000 -e APP_ADMIN_API_KEY=... -v app-data:/app/data someshwaran-dev
+```
+
+SQLite is a single file, so mount a volume (`/app/data`, matching the default
+`APP_DATABASE_URL`) for anything but throwaway/local use. Alembic migrations still run at
+process startup (`app/main.py`'s `lifespan`) — no separate migration step needed here either.
+
 ## E2E
 
 ```bash
@@ -189,7 +222,8 @@ pre-commit run --all-files
 ## CI
 
 Every pull request runs lint + typecheck + unit tests for both `backend/` and `frontend/`. E2E
-(Playwright) runs only on merge to `main`, per CLAUDE.md's testing bar — it drives the real app
-rather than mocks, so it's slower and shares mutable state across the suite, which makes it a
-poor fit for running on every PR push. See `.github/workflows/ci.yml`. The deploy workflow lands
-in phase 8.
+(Playwright) and the deploy to FastAPI Cloud both run only on merge to `main` — E2E per CLAUDE.md's
+testing bar (it drives the real app rather than mocks, so it's slower and shares mutable state
+across the suite, a poor fit for every PR push); deploy because `needs: [backend, frontend, e2e]`
+means it only fires once every other job has actually succeeded on that same push — see the
+"CI-gated deploy" section above. All four jobs live in the one `.github/workflows/ci.yml`.
