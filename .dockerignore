@@ -1,0 +1,23 @@
+# Keeps the build context small and avoids baking in host-machine state
+# (venvs, node_modules, caches) that the Dockerfile installs fresh anyway.
+.git/
+.github/
+
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+backend/.venv/
+backend/data/
+backend/*.db
+backend/frontend_dist/
+
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
