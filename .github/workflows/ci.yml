@@ -169,6 +169,14 @@ jobs:
           version: "latest"
           enable-cache: true
 
+      # Matches the backend/e2e jobs above: without this, `uv run` in
+      # scripts/deploy.sh would fall back to whatever Python (if any)
+      # ubuntu-latest happens to ship, rather than the uv-managed 3.11 the
+      # project targets — a mismatch that broke the actual FastAPI Cloud
+      # deploy (its remote build failed installing a Python interpreter).
+      - name: Set up Python
+        run: uv python install 3.11
+
       # Builds the frontend, copies it into backend/frontend_dist/, and
       # runs `fastapi deploy` — the exact same script a local manual
       # deploy uses (see README's Deploying section), so there's one
