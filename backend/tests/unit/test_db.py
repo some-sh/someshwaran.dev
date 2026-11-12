@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import get_settings
-from app.db import ensure_sqlite_directory_exists, get_engine
+from app.db import dispose_engine, ensure_sqlite_directory_exists, get_engine
 
 
 def test_creates_missing_parent_directories(tmp_path: Path) -> None:
@@ -34,7 +34,7 @@ def test_postgres_engine_pre_pings_and_recycles_for_serverless_databases(
     # is lazy, so this does not connect anywhere.
     monkeypatch.setenv("APP_DATABASE_URL", "postgres://u:p@localhost/db")
     get_settings.cache_clear()
-    get_engine.cache_clear()
+    dispose_engine()
     try:
         engine = get_engine()
 
@@ -43,4 +43,4 @@ def test_postgres_engine_pre_pings_and_recycles_for_serverless_databases(
         assert engine.pool._recycle == 300  # type: ignore[attr-defined]
     finally:
         get_settings.cache_clear()
-        get_engine.cache_clear()
+        dispose_engine()

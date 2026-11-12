@@ -21,6 +21,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 def test_migrations_produce_a_schema_the_service_can_use(tmp_path, monkeypatch):
+    engines: list = []
     db_path = tmp_path / "integration.db"
     database_url = f"sqlite:///{db_path}"
     monkeypatch.setenv("APP_DATABASE_URL", database_url)
@@ -31,6 +32,7 @@ def test_migrations_produce_a_schema_the_service_can_use(tmp_path, monkeypatch):
         command.upgrade(alembic_cfg, "head")
 
         engine = create_engine(database_url, connect_args={"check_same_thread": False})
+        engines.append(engine)
         with Session(engine) as session:
             resume = resume_service.create_resume(
                 session,
@@ -51,6 +53,8 @@ def test_migrations_produce_a_schema_the_service_can_use(tmp_path, monkeypatch):
             assert fetched.personal_info.full_name == "Ada Lovelace"
             assert [s.name for s in fetched.skills] == ["Python"]
     finally:
+        for engine in engines:
+            engine.dispose()  # Python 3.13+ warns about SQLite connections left unclosed
         get_settings.cache_clear()
 
 
@@ -69,10 +73,12 @@ def _migrate(url: str, monkeypatch, revision: str) -> None:
 
 
 def test_backfill_gives_existing_rows_explicit_positions(tmp_path, monkeypatch):
+    engines: list = []
     url = f"sqlite:///{tmp_path / 'backfill.db'}"
     try:
         _migrate(url, monkeypatch, "a1c4e7b2d9f0")  # state of production before the fix
         engine = create_engine(url)
+        engines.append(engine)
         with engine.begin() as conn:
             for name in ("one", "two"):
                 conn.execute(text(_INSERT_RESUME), {"name": name, "is_default": False})
@@ -97,14 +103,18 @@ def test_backfill_gives_existing_rows_explicit_positions(tmp_path, monkeypatch):
             (2, "2x", 0), (2, "2y", 1), (2, "2z", 2),
         ]  # fmt: skip
     finally:
+        for engine in engines:
+            engine.dispose()  # Python 3.13+ warns about SQLite connections left unclosed
         get_settings.cache_clear()
 
 
 def test_duplicate_defaults_are_resolved_before_the_unique_index(tmp_path, monkeypatch):
+    engines: list = []
     url = f"sqlite:///{tmp_path / 'dupes.db'}"
     try:
         _migrate(url, monkeypatch, "b2d5f8c3e1a7")
         engine = create_engine(url)
+        engines.append(engine)
         with engine.begin() as conn:
             for name in ("one", "two", "three"):
                 conn.execute(text(_INSERT_RESUME), {"name": name, "is_default": True})
@@ -115,4 +125,6 @@ def test_duplicate_defaults_are_resolved_before_the_unique_index(tmp_path, monke
             defaults = conn.execute(text("SELECT name FROM resumes WHERE is_default")).all()
         assert [r[0] for r in defaults] == ["one"]  # lowest id wins
     finally:
+        for engine in engines:
+            engine.dispose()  # Python 3.13+ warns about SQLite connections left unclosed
         get_settings.cache_clear()

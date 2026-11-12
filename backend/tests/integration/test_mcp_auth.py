@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
-from app.db import get_engine
+from app.db import dispose_engine
 
 _HEADERS = {"Accept": "application/json, text/event-stream"}
 
@@ -65,7 +65,7 @@ def test_mcp_endpoint_with_the_correct_key_reaches_the_real_mcp_transport(
     db_path = tmp_path / "app.db"
     monkeypatch.setenv("APP_DATABASE_URL", f"sqlite:///{db_path}")
     get_settings.cache_clear()
-    get_engine.cache_clear()
+    dispose_engine()
 
     try:
         from app.main import app
@@ -81,7 +81,7 @@ def test_mcp_endpoint_with_the_correct_key_reaches_the_real_mcp_transport(
             )
     finally:
         get_settings.cache_clear()
-        get_engine.cache_clear()
+        dispose_engine()
 
     assert response.status_code != 401
     assert response.json()["jsonrpc"] == "2.0"

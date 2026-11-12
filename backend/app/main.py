@@ -19,7 +19,7 @@ from app.core.cache_headers import StaticCacheHeadersMiddleware
 from app.core.config import get_settings
 from app.core.security import AdminBearerAuthMiddleware, warn_if_admin_key_is_weak
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.db import get_engine, get_session
+from app.db import dispose_engine, get_engine, get_session
 from app.mcp_server import build_mcp_asgi_app, build_mcp_server
 
 logger = logging.getLogger("app.main")
@@ -92,8 +92,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # lifespans under Mount) — the session manager has to be entered here
     # instead, or the MCP server's first request fails. See
     # app/mcp_server.py and the SDK's docs/run/asgi.md.
-    async with mcp_server.session_manager.run():
-        yield
+    try:
+        async with mcp_server.session_manager.run():
+            yield
+    finally:
+        dispose_engine()
 
 
 _docs_enabled = get_settings().enable_docs

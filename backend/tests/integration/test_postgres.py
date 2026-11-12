@@ -27,7 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.core.config import get_settings, normalize_database_url
-from app.db import get_engine
+from app.db import dispose_engine, get_engine
 from app.main import _run_migrations
 from app.schemas.resume import PersonalInfoInput, ResumeCreate, SkillInput
 from app.services import resume_service
@@ -53,9 +53,9 @@ def postgres_url(monkeypatch: pytest.MonkeyPatch) -> Generator[str, None, None]:
 
     monkeypatch.setenv("APP_DATABASE_URL", url)
     get_settings.cache_clear()
-    get_engine.cache_clear()
+    dispose_engine()
     yield url
-    get_engine.cache_clear()
+    dispose_engine()
     get_settings.cache_clear()
 
 

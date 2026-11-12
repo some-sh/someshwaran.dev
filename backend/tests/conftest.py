@@ -25,17 +25,19 @@ def session() -> Generator[Session, None, None]:
     SQLModel.metadata.create_all(engine)
     with Session(engine) as db_session:
         yield db_session
+    engine.dispose()  # Python 3.13+ warns about SQLite connections left unclosed
 
 
 @pytest.fixture
-def db_engine(tmp_path: Path) -> Engine:
+def db_engine(tmp_path: Path) -> Generator[Engine, None, None]:
     """A real temporary SQLite file with the schema created from the models
     (Alembic is covered by tests/integration/test_resume_migrations.py)."""
     engine = create_engine(
         f"sqlite:///{tmp_path / 'test.db'}", connect_args={"check_same_thread": False}
     )
     SQLModel.metadata.create_all(engine)
-    return engine
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture

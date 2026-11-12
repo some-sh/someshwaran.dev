@@ -56,6 +56,20 @@ def get_engine() -> Engine:
     )
 
 
+def dispose_engine() -> None:
+    """Closes every pooled connection and forgets the cached engine.
+
+    Called when the app shuts down (so database connections are released
+    cleanly instead of being dropped when the process exits) and by tests that
+    point the app at a throwaway database. Python 3.13+ warns (ResourceWarning)
+    when a SQLite connection is garbage-collected without being closed, which is
+    how leaked engines in the test suite showed up. A no-op if no engine has been
+    created yet."""
+    if get_engine.cache_info().currsize:
+        get_engine().dispose()
+        get_engine.cache_clear()
+
+
 def create_db_and_tables() -> None:
     """Create all tables from current models. Dev/test only — production
     schema changes always go through an Alembic migration instead."""
