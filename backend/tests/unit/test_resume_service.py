@@ -146,3 +146,84 @@ def test_clone_resume_copies_nested_content_independently(session):
 
 def test_clone_resume_returns_none_for_missing_id(session):
     assert resume_service.clone_resume(session, 999) is None
+
+
+# --- section order is stored explicitly (order_index), never left to the DB ---
+
+
+def test_create_assigns_positions_in_input_order(session):
+    data = _sample_create()
+    data.skills = [SkillInput(name=n) for n in ("c", "a", "b")]
+
+    resume = resume_service.create_resume(session, data)
+
+    # Not alphabetical, not all 0: the position is the input position.
+    assert [(s.name, s.order_index) for s in resume.skills] == [("c", 0), ("a", 1), ("b", 2)]
+
+
+def test_update_reassigns_positions_for_a_replaced_section(session):
+    resume = resume_service.create_resume(session, _sample_create())
+
+    updated = resume_service.update_resume(
+        session,
+        resume.id,
+        ResumeUpdate(skills=[SkillInput(name="z"), SkillInput(name="y")]),
+    )
+
+    assert updated is not None
+    assert [(s.name, s.order_index) for s in updated.skills] == [("z", 0), ("y", 1)]
+
+
+def test_clone_preserves_section_order(session):
+    data = _sample_create()
+    data.skills = [SkillInput(name=n) for n in ("c", "a", "b")]
+    source = resume_service.create_resume(session, data)
+
+    clone = resume_service.clone_resume(session, source.id)
+
+    assert clone is not None
+    assert [(s.name, s.order_index) for s in clone.skills] == [("c", 0), ("a", 1), ("b", 2)]
+
+
+def test_ties_in_order_index_still_sort_by_id(session):
+    """Rows created before positions were recorded all have order_index 0."""
+    from app.models.resume import Skill
+
+    resume = resume_service.create_resume(session, _sample_create())
+    for skill in list(resume.skills):
+        skill.order_index = 0
+        session.add(skill)
+    session.commit()
+    session.refresh(resume)
+
+    assert [s.name for s in resume.skills] == ["Python", "Go"]
+    assert isinstance(resume.skills[0], Skill)
+
+
+# --- "at most one default" ---
+
+
+def test_a_second_default_is_rejected_by_the_database(session):
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    first = resume_service.create_resume(session, _sample_create("one"))
+    second = resume_service.create_resume(session, _sample_create("two"))
+    resume_service.set_default_resume(session, first.id)
+
+    second.is_default = True  # bypasses set_default_resume on purpose
+    session.add(second)
+    with pytest.raises(IntegrityError):
+        session.commit()
+
+
+def test_set_default_moves_the_default_without_tripping_the_index(session):
+    first = resume_service.create_resume(session, _sample_create("one"))
+    second = resume_service.create_resume(session, _sample_create("two"))
+
+    resume_service.set_default_resume(session, first.id)
+    resume_service.set_default_resume(session, second.id)
+    resume_service.set_default_resume(session, second.id)  # idempotent
+
+    defaults = [r for r in resume_service.list_resumes(session) if r.is_default]
+    assert [r.name for r in defaults] == ["two"]

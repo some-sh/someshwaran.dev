@@ -24,6 +24,7 @@ dev = [
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "httpx>=0.27",
+    "pypdf>=7.0.1",
 ]
 
 [tool.ruff]

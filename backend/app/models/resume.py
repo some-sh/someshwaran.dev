@@ -24,7 +24,7 @@ file are quoted individually instead.
 from datetime import UTC, date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, Index, text
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -36,6 +36,18 @@ def _utcnow() -> datetime:
 
 class Resume(SQLModel, table=True):
     __tablename__ = "resumes"
+    # At most one default resume, enforced by the database (a partial unique
+    # index), not only by resume_service.set_default_resume. Kept in the model
+    # as well as the migration so `alembic check` sees no drift.
+    __table_args__ = (
+        Index(
+            "uq_resumes_single_default",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default = 1"),
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True)  # internal label, e.g. "Backend-focused"
@@ -50,34 +62,37 @@ class Resume(SQLModel, table=True):
     )
     skills: list["Skill"] = Relationship(
         back_populates="resume",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan", "order_by": "Skill.order_index"},
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "order_by": "Skill.order_index, Skill.id",
+        },
     )
     experience: list["Experience"] = Relationship(
         back_populates="resume",
         sa_relationship_kwargs={
             "cascade": "all, delete-orphan",
-            "order_by": "Experience.order_index",
+            "order_by": "Experience.order_index, Experience.id",
         },
     )
     projects: list["Project"] = Relationship(
         back_populates="resume",
         sa_relationship_kwargs={
             "cascade": "all, delete-orphan",
-            "order_by": "Project.order_index",
+            "order_by": "Project.order_index, Project.id",
         },
     )
     education: list["Education"] = Relationship(
         back_populates="resume",
         sa_relationship_kwargs={
             "cascade": "all, delete-orphan",
-            "order_by": "Education.order_index",
+            "order_by": "Education.order_index, Education.id",
         },
     )
     certifications: list["Certification"] = Relationship(
         back_populates="resume",
         sa_relationship_kwargs={
             "cascade": "all, delete-orphan",
-            "order_by": "Certification.order_index",
+            "order_by": "Certification.order_index, Certification.id",
         },
     )
 
