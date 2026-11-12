@@ -30,7 +30,7 @@ test('preview an unpublished resume from the list without publishing it', async 
     await page.getByLabel('API key').fill(ADMIN_KEY)
     await page.getByRole('button', { name: 'Sign in' }).click()
 
-    const row = page.getByRole('row').filter({ has: page.getByRole('link', { name }) })
+    const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name }) })
     await row.getByRole('link', { name: 'Preview', exact: true }).click()
 
     await expect(page).toHaveURL(new RegExp(`/admin/resumes/${id}/preview$`))

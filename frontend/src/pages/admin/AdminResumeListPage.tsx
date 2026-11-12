@@ -3,14 +3,6 @@ import { type ChangeEvent, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { ApiError, clearAdminKey, downloadAdminExport, downloadBackup } from '@/lib/api'
 import {
   useAdminResumesQuery,
@@ -151,7 +143,7 @@ export function AdminResumeListPage() {
     setDefaultMutation.isError || cloneMutation.isError || deleteMutation.isError
 
   const header = (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <h1 className="text-2xl font-semibold">Resumes</h1>
       <div className="flex gap-2">
         <Button asChild>
@@ -201,72 +193,63 @@ export function AdminResumeListPage() {
       {resumes.length === 0 ? (
         <p className="text-muted-foreground text-sm">No resumes yet — create one to get started.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {resumes.map((resume) => (
-              <TableRow key={resume.id}>
-                <TableCell>
+        // A list of cards rather than a table: a five-button actions column can't
+        // fit beside the name on a phone, so each resume stacks name, status and
+        // actions and the buttons wrap instead of scrolling off-screen.
+        <ul className="flex flex-col gap-3">
+          {resumes.map((resume) => (
+            <li key={resume.id} className="flex flex-col gap-3 rounded-md border p-4">
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
                     to="/admin/resumes/$id"
                     params={{ id: String(resume.id) }}
-                    className="underline underline-offset-4"
+                    className="font-medium underline underline-offset-4 [overflow-wrap:anywhere]"
                   >
                     {resume.name}
                   </Link>
-                </TableCell>
-                <TableCell>{resume.is_default && <Badge>Default</Badge>}</TableCell>
-                <TableCell>{new Date(resume.updated_at).toLocaleString()}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {!resume.is_default && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setDefaultMutation.mutate(resume.id)}
-                      >
-                        Set default
-                      </Button>
-                    )}
-                    <Button asChild size="sm" variant="outline">
-                      <Link to="/admin/resumes/$id/preview" params={{ id: String(resume.id) }}>
-                        Preview
-                      </Link>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => cloneMutation.mutate(resume.id)}
-                    >
-                      Clone
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => downloadAdminExport(resume.id, 'pdf', resume.name)}
-                    >
-                      PDF
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleDelete(resume.id, resume.name)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                  {resume.is_default && <Badge>Default</Badge>}
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  Updated {new Date(resume.updated_at).toLocaleString()}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {!resume.is_default && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDefaultMutation.mutate(resume.id)}
+                  >
+                    Set default
+                  </Button>
+                )}
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/admin/resumes/$id/preview" params={{ id: String(resume.id) }}>
+                    Preview
+                  </Link>
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => cloneMutation.mutate(resume.id)}>
+                  Clone
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => downloadAdminExport(resume.id, 'pdf', resume.name)}
+                >
+                  PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => handleDelete(resume.id, resume.name)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </main>
   )
