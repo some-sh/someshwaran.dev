@@ -46,7 +46,7 @@ test('create, publish, clone, and delete a resume', async ({ page }) => {
 
   await test.step('set it as default from the resume list', async () => {
     await page.goto('/admin')
-    const row = page.locator('tr', { hasText: 'E2E Test Resume' })
+    const row = page.locator('li', { hasText: 'E2E Test Resume' })
     await row.getByRole('button', { name: 'Set default' }).click()
     // exact: true so this only matches the "Default" badge, not a
     // "Set default" button that might still be visible mid-transition.
@@ -62,10 +62,10 @@ test('create, publish, clone, and delete a resume', async ({ page }) => {
 
   await test.step('clone it', async () => {
     await page.goto('/admin')
-    const originalRow = page.locator('tr', { hasText: 'E2E Test Resume' }).first()
+    const originalRow = page.locator('li', { hasText: 'E2E Test Resume' }).first()
     await originalRow.getByRole('button', { name: 'Clone' }).click()
 
-    const cloneRow = page.locator('tr', { hasText: 'E2E Test Resume (copy)' })
+    const cloneRow = page.locator('li', { hasText: 'E2E Test Resume (copy)' })
     await expect(cloneRow).toBeVisible()
     // Cloning never inherits default status, even from the default resume.
     // exact: true matters here — getByText does a case-insensitive substring
@@ -76,15 +76,15 @@ test('create, publish, clone, and delete a resume', async ({ page }) => {
 
   await test.step('delete the clone', async () => {
     page.once('dialog', (dialog) => dialog.accept())
-    const cloneRow = page.locator('tr', { hasText: 'E2E Test Resume (copy)' })
+    const cloneRow = page.locator('li', { hasText: 'E2E Test Resume (copy)' })
     await cloneRow.getByRole('button', { name: 'Delete' }).click()
 
-    await expect(page.locator('tr', { hasText: 'E2E Test Resume (copy)' })).toHaveCount(0)
+    await expect(page.locator('li', { hasText: 'E2E Test Resume (copy)' })).toHaveCount(0)
   })
 
   await test.step('delete the original, leaving no default resume', async () => {
     page.once('dialog', (dialog) => dialog.accept())
-    const row = page.locator('tr', { hasText: 'E2E Test Resume' })
+    const row = page.locator('li', { hasText: 'E2E Test Resume' })
     await row.getByRole('button', { name: 'Delete' }).click()
 
     await expect(page.getByText('No resumes yet')).toBeVisible()

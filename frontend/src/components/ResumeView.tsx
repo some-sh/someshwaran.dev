@@ -18,7 +18,7 @@ export function ResumeView({ resume, actions }: { resume: Resume; actions?: Reac
   const skillsByCategory = groupBy(resume.skills, (skill) => skill.category ?? 'General')
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-12">
+    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-12 [overflow-wrap:anywhere]">
       <header className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold">{info?.full_name ?? resume.name}</h1>
         {resume.headline && <p className="text-lg font-medium">{resume.headline}</p>}

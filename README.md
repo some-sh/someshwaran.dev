@@ -234,7 +234,8 @@ npm run dev           # run locally
 - `/admin/login` — paste the backend's `APP_ADMIN_API_KEY`; verified against `GET
   /api/admin/whoami` before it's saved to `localStorage`. Every admin page clears a key the
   moment a request 401s (revoked/wrong) and redirects back here.
-- `/admin` — resume list: create, clone, set default, export, delete.
+- `/admin` — resume list: create, clone, preview, set default, export, delete. Shown as stacked cards
+  (not a table) so the action buttons wrap on a phone instead of scrolling off-screen.
 - `/admin/resumes/new` / `/admin/resumes/:id` — the resume editor — one form for every section
   (personal info, skills, experience, projects, education, certifications), each repeatable
   section with its own add/remove rows. Saving always replaces each nested collection wholesale
