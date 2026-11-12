@@ -37,12 +37,23 @@ def ensure_sqlite_directory_exists(database_url: str) -> None:
 def get_engine() -> Engine:
     settings = get_settings()
     ensure_sqlite_directory_exists(settings.database_url)
-    # SQLite + FastAPI's threaded test client need check_same_thread=False;
-    # harmless (and ignored) for other dialects.
-    connect_args = (
-        {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+    if settings.database_url.startswith("sqlite"):
+        # SQLite + FastAPI's threaded test client need check_same_thread=False.
+        return create_engine(
+            settings.database_url,
+            echo=settings.db_echo,
+            connect_args={"check_same_thread": False},
+        )
+    # Serverless Postgres (Neon) closes idle connections and scales to zero, so
+    # a pooled connection can be dead by the time a request picks it up:
+    # pre-ping replaces a stale one instead of failing that request, and a
+    # short recycle keeps the pool from holding connections the server dropped.
+    return create_engine(
+        settings.database_url,
+        echo=settings.db_echo,
+        pool_pre_ping=True,
+        pool_recycle=300,
     )
-    return create_engine(settings.database_url, echo=settings.db_echo, connect_args=connect_args)
 
 
 def create_db_and_tables() -> None:
