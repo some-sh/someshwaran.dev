@@ -239,6 +239,10 @@ npm run dev           # run locally
   (personal info, skills, experience, projects, education, certifications), each repeatable
   section with its own add/remove rows. Saving always replaces each nested collection wholesale
   (matching `resume_service.update_resume`'s semantics), not a per-row PATCH.
+- `/admin/resumes/:id/preview` — renders any resume (default or not) exactly as the public page
+  does, through the same `ResumeView` component, with a banner saying whether it is published.
+  It reads the admin endpoint (the public one only serves the default), so a draft can be reviewed
+  without publishing it. It shows the *saved* version; unsaved editor changes are not included.
 
 Nothing here builds its own auth system — `src/lib/api.ts` is the one place the admin API key is
 read from `localStorage` and attached as `Authorization: Bearer <key>`, same mechanism as the
