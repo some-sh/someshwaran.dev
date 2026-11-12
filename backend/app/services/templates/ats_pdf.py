@@ -126,9 +126,12 @@ class _DatedLine(Flowable):  # type: ignore[misc]  # reportlab ships no type stu
     carries links; it just gets the width the date leaves free.
     """
 
-    def __init__(self, left: Paragraph, dates: str, dates_style: ParagraphStyle) -> None:
+    def __init__(
+        self, left: Paragraph, left_style: ParagraphStyle, dates: str, dates_style: ParagraphStyle
+    ) -> None:
         super().__init__()
         self._left = left
+        self._left_style = left_style
         self._dates = dates
         self._style = dates_style
         self._left_height = 0.0
@@ -151,16 +154,21 @@ class _DatedLine(Flowable):  # type: ignore[misc]  # reportlab ships no type stu
         if not self._dates:
             return
         style = self._style
-        ascent, _ = pdfmetrics.getAscentDescent(style.fontName, style.fontSize)
         self.canv.setFont(style.fontName, style.fontSize)
         self.canv.setFillColor(style.textColor)
-        self.canv.drawRightString(self.width, self._left_height - ascent, self._dates)
+        # reportlab puts a Paragraph's first baseline at (height - fontSize);
+        # using the font's ascent here instead (the obvious choice) left the
+        # dates 3pt above the role's baseline.
+        baseline = self._left_height - self._left_style.fontSize
+        self.canv.drawRightString(self.width, baseline, self._dates)
 
 
 def _entry_header(
     left: str, dates: str, styles: dict[str, ParagraphStyle], left_style: str = "body"
 ) -> _DatedLine:
-    return _DatedLine(Paragraph(left, styles[left_style]), dates, styles["dates"])
+    return _DatedLine(
+        Paragraph(left, styles[left_style]), styles[left_style], dates, styles["dates"]
+    )
 
 
 def _bullets(group: BulletGroup, styles: dict[str, ParagraphStyle]) -> ListFlowable:

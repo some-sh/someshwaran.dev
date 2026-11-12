@@ -315,3 +315,27 @@ def test_docx_escapes_nothing_and_prints_markup_characters_literally() -> None:
     document = Document(io.BytesIO(render_resume_docx(resume)))
 
     assert "Wrote a <para tag & <b>bold</b>" in "\n".join(p.text for p in document.paragraphs)
+
+
+def _baselines(pdf_bytes: bytes, wanted: set[str]) -> dict[str, float]:
+    """Baseline y of the first text run equal to each wanted string."""
+    found: dict[str, float] = {}
+
+    def visit(text, cm, tm, font_dict, font_size):  # noqa: ANN001 - pypdf visitor signature
+        run = text.strip()
+        if run in wanted and run not in found:
+            found[run] = tm[5] * cm[3] + tm[4] * cm[1] + cm[5]
+
+    PdfReader(io.BytesIO(pdf_bytes)).pages[0].extract_text(visitor_text=visit)
+    return found
+
+
+def test_pdf_dates_share_the_baseline_of_their_role_line() -> None:
+    """Dates are drawn separately from the role text, so their baselines must be
+    computed to match; they were once 3pt too high (measured on the live PDF)."""
+    pdf = render_resume_pdf(_grouped_resume())
+
+    y = _baselines(pdf, {"Member Technical Staff", "May 2019 – Present", "2015 – 2019", "B.E."})
+
+    assert abs(y["Member Technical Staff"] - y["May 2019 – Present"]) < 0.1
+    assert abs(y["B.E."] - y["2015 – 2019"]) < 0.1
