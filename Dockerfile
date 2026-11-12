@@ -10,7 +10,7 @@
 # throwaway/local use, or point APP_DATABASE_URL elsewhere):
 #   docker run -p 8000:8000 -e APP_ADMIN_API_KEY=... -v app-data:/app/data someshwaran-dev
 
-FROM node:24-slim AS frontend
+FROM node:25-slim AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
