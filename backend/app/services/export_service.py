@@ -13,6 +13,7 @@ from __future__ import annotations
 import io
 import re
 from datetime import date
+from xml.sax.saxutils import escape
 
 from docx import Document
 from reportlab.lib.pagesizes import LETTER
@@ -72,6 +73,11 @@ def _skills_by_category(resume: Resume) -> dict[str, list[str]]:
 
 
 def render_resume_pdf(resume: Resume) -> bytes:
+    """reportlab's Paragraph parses its text as inline markup (<b>, <i>,
+    <img src=...>, ...). Resume text is data, not markup, so every
+    user-supplied string goes through ``escape`` first; only the <b> tags this
+    function adds itself stay live. Unescaped, an unbalanced "<" crashed the
+    export and ``<img src="/some/file.png">`` embedded a local file."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=LETTER, topMargin=0.75 * inch, bottomMargin=0.75 * inch
@@ -82,32 +88,35 @@ def render_resume_pdf(resume: Resume) -> bytes:
     name_style = ParagraphStyle("Name", parent=styles["Title"], alignment=0)
 
     full_name = resume.personal_info.full_name if resume.personal_info else resume.name
-    story: list[object] = [Paragraph(full_name, name_style)]
+    story: list[object] = [Paragraph(escape(full_name), name_style)]
 
     contact = _contact_line(resume)
     if contact:
-        story.append(Paragraph(contact, body))
+        story.append(Paragraph(escape(contact), body))
     if resume.summary:
         story.append(Spacer(1, 12))
-        story.append(Paragraph(resume.summary, body))
+        story.append(Paragraph(escape(resume.summary), body))
 
     if resume.skills:
         story.append(Spacer(1, 12))
         story.append(Paragraph("Skills", heading))
         for category, names in _skills_by_category(resume).items():
-            story.append(Paragraph(f"<b>{category}:</b> {', '.join(names)}", body))
+            story.append(Paragraph(f"<b>{escape(category)}:</b> {escape(', '.join(names))}", body))
 
     if resume.experience:
         story.append(Spacer(1, 12))
         story.append(Paragraph("Experience", heading))
         for exp in resume.experience:
             story.append(
-                Paragraph(f"<b>{exp.role}</b>, {exp.company} ({_experience_dates(exp)})", body)
+                Paragraph(
+                    f"<b>{escape(exp.role)}</b>, {escape(exp.company)} ({_experience_dates(exp)})",
+                    body,
+                )
             )
             if exp.highlights:
                 story.append(
                     ListFlowable(
-                        [ListItem(Paragraph(h, body)) for h in exp.highlights],
+                        [ListItem(Paragraph(escape(h), body)) for h in exp.highlights],
                         bulletType="bullet",
                     )
                 )
@@ -119,17 +128,17 @@ def render_resume_pdf(resume: Resume) -> bytes:
             title = project.name
             if project.tech_stack:
                 title += f" — {', '.join(project.tech_stack)}"
-            story.append(Paragraph(f"<b>{title}</b>", body))
+            story.append(Paragraph(f"<b>{escape(title)}</b>", body))
             if project.description:
-                story.append(Paragraph(project.description, body))
+                story.append(Paragraph(escape(project.description), body))
 
     if resume.education:
         story.append(Spacer(1, 12))
         story.append(Paragraph("Education", heading))
         for edu in resume.education:
-            line = f"<b>{edu.degree}</b>, {edu.institution}"
+            line = f"<b>{escape(edu.degree)}</b>, {escape(edu.institution)}"
             if edu.field_of_study:
-                line += f" — {edu.field_of_study}"
+                line += f" — {escape(edu.field_of_study)}"
             if years := _education_years(edu):
                 line += f" ({years})"
             story.append(Paragraph(line, body))
@@ -138,9 +147,9 @@ def render_resume_pdf(resume: Resume) -> bytes:
         story.append(Spacer(1, 12))
         story.append(Paragraph("Certifications", heading))
         for cert in resume.certifications:
-            line = cert.name
+            line = escape(cert.name)
             if cert.issuer:
-                line += f", {cert.issuer}"
+                line += f", {escape(cert.issuer)}"
             story.append(Paragraph(line, body))
 
     doc.build(story)
