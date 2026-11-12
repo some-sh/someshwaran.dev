@@ -127,3 +127,26 @@ def test_export_missing_resume_is_404(client, admin_headers):
 
     assert pdf.status_code == 404
     assert docx.status_code == 404
+
+
+def test_admin_export_accepts_the_ats_template_and_rejects_unknown_ones(client, admin_headers):
+    resume_id = client.post(
+        "/api/admin/resumes", json=_create_payload(), headers=admin_headers
+    ).json()["id"]
+    base = f"/api/admin/resumes/{resume_id}"
+
+    assert client.get(f"{base}/export.pdf?template=ats", headers=admin_headers).status_code == 200
+    assert client.get(f"{base}/export.docx?template=ats", headers=admin_headers).status_code == 200
+    assert client.get(f"{base}/export.pdf?template=nope", headers=admin_headers).status_code == 422
+
+
+def test_headline_can_be_set_and_patched(client, admin_headers):
+    payload = _create_payload() | {"headline": "First headline"}
+    resume_id = client.post("/api/admin/resumes", json=payload, headers=admin_headers).json()["id"]
+
+    patched = client.patch(
+        f"/api/admin/resumes/{resume_id}", json={"headline": "Second"}, headers=admin_headers
+    )
+
+    assert patched.status_code == 200
+    assert patched.json()["headline"] == "Second"

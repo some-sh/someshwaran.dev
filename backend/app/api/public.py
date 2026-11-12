@@ -32,22 +32,28 @@ def get_default_resume(session: Session = Depends(get_session)) -> Resume:
 
 
 @router.get("/default/export.pdf")
-def export_default_resume_pdf(session: Session = Depends(get_session)) -> Response:
+def export_default_resume_pdf(
+    template: export_service.Template = export_service.DEFAULT_TEMPLATE,
+    session: Session = Depends(get_session),
+) -> Response:
     resume = _get_default_or_404(session)
     filename = f"{export_service.slugify_filename(resume.name)}.pdf"
     return Response(
-        content=export_service.render_resume_pdf(resume),
+        content=export_service.render_resume_pdf(resume, template),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
 @router.get("/default/export.docx")
-def export_default_resume_docx(session: Session = Depends(get_session)) -> Response:
+def export_default_resume_docx(
+    template: export_service.Template = export_service.DEFAULT_TEMPLATE,
+    session: Session = Depends(get_session),
+) -> Response:
     resume = _get_default_or_404(session)
     filename = f"{export_service.slugify_filename(resume.name)}.docx"
     return Response(
-        content=export_service.render_resume_docx(resume),
+        content=export_service.render_resume_docx(resume, template),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
