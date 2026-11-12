@@ -101,6 +101,41 @@ when they found it. What it does not do: the counters are per process (several i
 the limit), and the address comes from `CF-Connecting-IP` / `X-Forwarded-For`, which a caller who
 reaches the app directly can forge, so treat this as a speed bump and rely on a long random key.
 
+### Performance, caching and health
+
+- **The public page, PDF and DOCX are cached by resume *version*** (`app/services/response_cache.py`,
+  `app/api/exports.py`). A version is the resume's id plus its `updated_at`; it costs one narrow
+  query to read. Responses carry a strong `ETag` and `Cache-Control: public, no-cache` — cached, but
+  revalidated every time — so a repeat request is 1 query and a `304`, a miss skips loading the six
+  nested sections and the rendering (an in-process LRU of the bytes), and **an edit is visible on the
+  very next request**, never after a timeout. The ETag also hashes the rendering code, so a deploy
+  that changes a template invalidates everything. Admin exports stay `no-store`. Measured through
+  the routes: cold 7+ queries, warm 1, revalidation 1. (Eager loading was measured and rejected:
+  `selectinload` is still 7 queries, `joinedload` returns the cross product of every section.)
+- **Static files:** hashed `/assets/*` are `immutable` for a year; `index.html` is `no-cache` so a
+  deploy takes effect immediately.
+- **`GET /health`** is liveness (the process is up, and whether the frontend mounted).
+  **`GET /health/ready`** is readiness: it queries the database and returns `503` if it can't,
+  without saying why (the reason goes to the log).
+
+### Backup and restore
+
+A resume lives in one database, so keep a copy somewhere else. **Admin → Resumes → Backup** has
+"Download backup" and "Restore from file…", or from a terminal:
+
+```bash
+APP_URL=https://someshwarandev.fastapicloud.dev APP_ADMIN_API_KEY=... ./scripts/backup.sh ~/backups
+```
+
+The file is plain, versioned JSON in the same shape the create API accepts (readable and diffable;
+no database ids). **Restore** (`POST /api/admin/import`) is all-or-nothing in one transaction;
+names that already exist are skipped, so running it twice is harmless; the current default is never
+taken away (a backup's default applies only if there is none); `?replace=true` (the "Replace all
+existing resumes" box, which asks for confirmation) deletes everything first, in the same
+transaction, so a rejected file changes nothing. Imports are validated like any other write.
+**Keep backups private**: they contain every draft, not just the published resume, so don't commit
+them or attach them to a public CI run.
+
 ### Security hardening
 
 - **Headers** (`app/core/security_headers.py`, on every response): a strict
@@ -116,7 +151,8 @@ reaches the app directly can forge, so treat this as a speed bump and rely on a 
   `data:`, `file:`). Reads are unconstrained, so existing data always loads.
 - **Logging:** migrations run from the app no longer reconfigure logging (Alembic's default
   silently disabled uvicorn's and the app's loggers).
-- **Known gaps:** the admin key is kept in `localStorage` (the CSP limits what injected script
+- **Known gaps:** there is no automatic backup (use the script, ideally on a schedule you control);
+  the admin key is kept in `localStorage` (the CSP limits what injected script
   could do with it); MCP uses the same full-access key as the admin UI; there is no audit log.
 
 ### Resume API
