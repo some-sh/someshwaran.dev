@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import {
   type FormEvent,
   type ReactElement,
@@ -253,6 +253,13 @@ export function AdminResumeEditorPage() {
           <Button type="button" variant="outline" onClick={() => navigate({ to: '/admin' })}>
             Cancel
           </Button>
+          {isEditing && (
+            <Button asChild variant="outline">
+              <Link to="/admin/resumes/$id/preview" params={{ id: String(resumeId) }}>
+                Preview saved version
+              </Link>
+            </Button>
+          )}
         </div>
       </form>
     </main>

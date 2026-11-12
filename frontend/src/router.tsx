@@ -19,6 +19,7 @@ import { PublicResumePage } from '@/pages/PublicResumePage'
 import { AdminLoginPage } from '@/pages/admin/AdminLoginPage'
 import { AdminResumeEditorPage } from '@/pages/admin/AdminResumeEditorPage'
 import { AdminResumeListPage } from '@/pages/admin/AdminResumeListPage'
+import { AdminResumePreviewPage } from '@/pages/admin/AdminResumePreviewPage'
 
 const rootRoute = createRootRoute({
   notFoundComponent: NotFoundPage,
@@ -73,10 +74,21 @@ const adminEditResumeRoute = createRoute({
   component: AdminResumeEditorPage,
 })
 
+const adminPreviewResumeRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'resumes/$id/preview',
+  component: AdminResumePreviewPage,
+})
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   adminLoginRoute,
-  adminRoute.addChildren([adminIndexRoute, adminNewResumeRoute, adminEditResumeRoute]),
+  adminRoute.addChildren([
+    adminIndexRoute,
+    adminNewResumeRoute,
+    adminEditResumeRoute,
+    adminPreviewResumeRoute,
+  ]),
 ])
 
 export const router = createRouter({ routeTree })

@@ -235,6 +235,11 @@ export function AdminResumeListPage() {
                         Set default
                       </Button>
                     )}
+                    <Button asChild size="sm" variant="outline">
+                      <Link to="/admin/resumes/$id/preview" params={{ id: String(resume.id) }}>
+                        Preview
+                      </Link>
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
