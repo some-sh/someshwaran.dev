@@ -88,6 +88,37 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"  # paste into APP_A
 
 Every route under `/api/admin/*` requires `Authorization: Bearer <key>`.
 
+**Use a long random key** (the command above gives 43 characters / 256 bits). Startup logs a
+warning if `APP_ADMIN_API_KEY` is unset or under 32 characters; it does not refuse to start, so a
+short key can't lock you out of your own deployment. To rotate it, set a new value on the
+deployment (`fastapi cloud env set APP_ADMIN_API_KEY ...`); the old key stops working on redeploy.
+
+**Wrong-key throttling.** After `APP_ADMIN_AUTH_MAX_FAILURES` (default 10) wrong keys from one
+address within `APP_ADMIN_AUTH_WINDOW_SECONDS` (default 300), that address gets `429` with
+`Retry-After` — on both the REST routes and MCP, from one shared decision. A locked address is
+refused even with the *correct* key, otherwise "429 for wrong, 200 for right" would tell a guesser
+when they found it. What it does not do: the counters are per process (several instances multiply
+the limit), and the address comes from `CF-Connecting-IP` / `X-Forwarded-For`, which a caller who
+reaches the app directly can forge, so treat this as a speed bump and rely on a long random key.
+
+### Security hardening
+
+- **Headers** (`app/core/security_headers.py`, on every response): a strict
+  Content-Security-Policy (own-origin scripts/styles only, no inline or eval, no framing, no
+  plugins), `nosniff`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, HSTS over
+  https (no `includeSubDomains`/`preload`: the app doesn't own the parent domain), and
+  `Cache-Control: no-store` on `/api/admin` and `/api/mcp`. A CSP can break the whole site, so
+  `e2e/tests/security.spec.ts` loads the real built app in a browser and fails on any violation.
+- **API docs are off** (`/docs`, `/redoc`, `/openapi.json` return 404) because they list every
+  admin route. `APP_ENABLE_DOCS=true` turns them on for local development.
+- **Input limits** (`app/schemas/resume.py`): writes via REST and MCP have length and list-size
+  limits, a validated email, and links restricted to http(s)/bare hosts (never `javascript:`,
+  `data:`, `file:`). Reads are unconstrained, so existing data always loads.
+- **Logging:** migrations run from the app no longer reconfigure logging (Alembic's default
+  silently disabled uvicorn's and the app's loggers).
+- **Known gaps:** the admin key is kept in `localStorage` (the CSP limits what injected script
+  could do with it); MCP uses the same full-access key as the admin UI; there is no audit log.
+
 ### Resume API
 
 - `GET /api/resumes/default` — the current default resume, public, no auth (404 until one is set)
@@ -271,3 +302,9 @@ testing bar (it drives the real app rather than mocks, so it's slower and shares
 across the suite, a poor fit for every PR push); deploy because `needs: [backend, frontend, e2e]`
 means it only fires once every other job has actually succeeded on that same push — see the
 "CI-gated deploy" section above. All four jobs live in the one `.github/workflows/ci.yml`.
+
+The workflow runs with read-only token permissions, every action is pinned to a commit SHA (the
+version is in a comment; Dependabot, configured in `.github/dependabot.yml`, keeps them and the
+backend/frontend/e2e/Docker dependencies current in weekly grouped PRs), jobs have timeouts, a
+newer push to a PR cancels its older run (pushes to `main` are never cancelled), and only one
+production deploy runs at a time.

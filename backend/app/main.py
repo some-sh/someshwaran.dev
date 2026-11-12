@@ -14,7 +14,8 @@ from starlette.types import Receive, Scope, Send
 from app.api.admin import router as admin_router
 from app.api.public import router as public_resumes_router
 from app.core.config import get_settings
-from app.core.security import AdminBearerAuthMiddleware
+from app.core.security import AdminBearerAuthMiddleware, warn_if_admin_key_is_weak
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.db import get_engine
 from app.mcp_server import build_mcp_asgi_app, build_mcp_server
 
@@ -35,6 +36,8 @@ def _run_migrations() -> None:
     database, and it's a no-op once a database is already at head.
     """
     alembic_config = Config(str(_BACKEND_DIR / "alembic.ini"))
+    # The app owns logging; see migrations/env.py.
+    alembic_config.attributes["configure_logger"] = False
     engine = get_engine()
     if engine.dialect.name != "postgresql":
         command.upgrade(alembic_config, "head")
@@ -76,6 +79,7 @@ class _MCPDispatch:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    warn_if_admin_key_is_weak()
     _run_migrations()
     mcp_server = build_mcp_server()
     app.state.mcp_asgi_app = build_mcp_asgi_app(mcp_server)
@@ -87,7 +91,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
 
 
-app = FastAPI(title="someshwaran.dev API", lifespan=lifespan)
+_docs_enabled = get_settings().enable_docs
+app = FastAPI(
+    title="someshwaran.dev API",
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 # The frontend (phase 5) is served from its own origin (Vite dev server
 # locally; a separate static host once deployed), not this API's — the
 # browser needs an explicit allowlist rather than same-origin defaults.
@@ -98,6 +109,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Added last so it is the outermost layer: it covers every response, including
+# CORS preflights and the 401s the auth layers return.
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(admin_router)
 app.include_router(public_resumes_router)
 # Same admin API key as every other admin route (see AdminBearerAuthMiddleware

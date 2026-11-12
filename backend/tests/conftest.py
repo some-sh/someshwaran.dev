@@ -7,6 +7,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 import app.models  # noqa: F401  ensures tables are registered on metadata
 from app.core.config import get_settings
+from app.core.security import get_auth_limiter
 from app.db import get_session
 from app.main import app
 
@@ -55,3 +56,12 @@ def admin_headers(monkeypatch: pytest.MonkeyPatch) -> Generator[dict[str, str], 
     get_settings.cache_clear()
     yield {"Authorization": "Bearer test-admin-key"}
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_auth_limiter() -> Generator[None, None, None]:
+    """The limiter is process-wide state: failures recorded by one test (many
+    deliberately send wrong keys) must not lock out the next."""
+    get_auth_limiter.cache_clear()
+    yield
+    get_auth_limiter.cache_clear()

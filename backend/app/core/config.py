@@ -37,11 +37,22 @@ class Settings(BaseSettings):
     )
     db_echo: bool = False
 
+    # Interactive API docs (/docs, /redoc, /openapi.json). Off by default: on a
+    # public deployment they advertise every admin route. Set APP_ENABLE_DOCS=true
+    # for local development.
+    enable_docs: bool = False
+
     # Shared secret for the one admin auth mechanism (see app/core/security.py).
     # None by default so a deployment with no key configured fails closed
     # instead of silently trusting any bearer token. Generate one with:
     #   python -c "import secrets; print(secrets.token_urlsafe(32))"
     admin_api_key: str | None = None
+
+    # Failed admin-key attempts allowed per client address within the window;
+    # past that the address is refused (429) until the window passes. See
+    # app/core/rate_limit.py for what this does and does not protect against.
+    admin_auth_max_failures: int = 10
+    admin_auth_window_seconds: int = 300
 
     # Comma-separated, not a JSON list: keeps a plain env var usable
     # (APP_CORS_ALLOWED_ORIGINS="https://someshwaran.dev,http://localhost:5173")

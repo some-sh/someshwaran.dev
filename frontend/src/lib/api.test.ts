@@ -4,6 +4,7 @@ import {
   clearAdminKey,
   createResume,
   defaultResumeExportUrl,
+  describeDetail,
   getAdminKey,
   getDefaultResume,
   setAdminKey,
@@ -172,5 +173,33 @@ describe('createResume', () => {
     expect((options.headers as Headers).get('Authorization')).toBe('Bearer the-key')
     expect((options.headers as Headers).get('Content-Type')).toBe('application/json')
     expect(JSON.parse(options.body)).toMatchObject({ name: 'x' })
+  })
+})
+
+describe('describeDetail', () => {
+  it('passes a string detail through', () => {
+    expect(describeDetail('Resume not found', 'Not Found')).toBe('Resume not found')
+  })
+
+  it('names the field for FastAPI validation errors', () => {
+    const detail = [
+      { loc: ['body', 'personal_info', 'email'], msg: 'value is not a valid email address' },
+      { loc: ['body', 'summary'], msg: 'String should have at most 4000 characters' },
+    ]
+
+    expect(describeDetail(detail, 'Unprocessable Entity')).toBe(
+      'personal_info.email: value is not a valid email address; summary: String should have at most 4000 characters',
+    )
+  })
+
+  it('shows at most three problems', () => {
+    const detail = Array.from({ length: 5 }, (_, i) => ({ loc: ['body', `f${i}`], msg: 'bad' }))
+
+    expect(describeDetail(detail, 'x').split('; ')).toHaveLength(3)
+  })
+
+  it('falls back to the status text when the detail is not understood', () => {
+    expect(describeDetail(undefined, 'Bad Request')).toBe('Bad Request')
+    expect(describeDetail([{ nonsense: true }], 'Bad Request')).toBe('Bad Request')
   })
 })

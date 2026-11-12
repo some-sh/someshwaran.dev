@@ -85,3 +85,45 @@ def test_mcp_endpoint_with_the_correct_key_reaches_the_real_mcp_transport(
 
     assert response.status_code != 401
     assert response.json()["jsonrpc"] == "2.0"
+
+
+def test_mcp_endpoint_locks_out_an_address_after_repeated_wrong_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same lockout as the REST routes: one authenticate() decision."""
+    monkeypatch.setenv("APP_ADMIN_AUTH_MAX_FAILURES", "3")
+    get_settings.cache_clear()
+    from app.main import app
+
+    client = TestClient(app)
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+    wrong = {**_HEADERS, "Authorization": "Bearer wrong-key"}
+
+    codes = [client.post("/api/mcp/", json=body, headers=wrong).status_code for _ in range(3)]
+    locked = client.post("/api/mcp/", json=body, headers=wrong)
+    correct_but_locked = client.post(
+        "/api/mcp/", json=body, headers={**_HEADERS, "Authorization": "Bearer test-admin-key"}
+    )
+
+    assert codes == [401, 401, 401]
+    assert locked.status_code == 429
+    assert int(locked.headers["retry-after"]) > 0
+    assert correct_but_locked.status_code == 429
+
+
+def test_the_lockout_is_shared_between_rest_and_mcp(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ADMIN_AUTH_MAX_FAILURES", "3")
+    get_settings.cache_clear()
+    from app.main import app
+
+    client = TestClient(app)
+    for _ in range(3):  # failures against the REST API...
+        client.get("/api/admin/whoami", headers={"Authorization": "Bearer wrong"})
+
+    response = client.post(  # ...lock the same address out of MCP
+        "/api/mcp/",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        headers={**_HEADERS, "Authorization": "Bearer wrong-key"},
+    )
+
+    assert response.status_code == 429

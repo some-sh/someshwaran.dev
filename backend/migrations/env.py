@@ -16,8 +16,13 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# Skipped when migrations run from inside the app (app/main.py sets this): the
+# app already configured logging, and fileConfig would reset the root logger
+# and, by default, silently disable every logger that already exists —
+# including uvicorn's, so request and error logs vanished after startup.
+# From the CLI it still configures logging, but without disabling others.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Migrations always target the same database as the running app —
 # read the URL from app settings instead of hardcoding it in alembic.ini.

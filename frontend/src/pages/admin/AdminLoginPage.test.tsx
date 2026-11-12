@@ -54,4 +54,36 @@ describe('AdminLoginPage', () => {
     expect(await screen.findByText(/invalid api key/i)).toBeInTheDocument()
     expect(getAdminKey()).toBeNull()
   })
+  it('says so when the address is locked out, instead of calling the key invalid', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Too many failed attempts. Try again later.' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '240' },
+      }),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/admin/login')
+
+    await user.type(await screen.findByLabelText(/api key/i), 'whatever')
+    await user.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(await screen.findByText(/too many failed attempts/i)).toBeInTheDocument()
+    expect(screen.getByText(/about 4 minutes/i)).toBeInTheDocument()
+    expect(screen.queryByText(/invalid api key/i)).not.toBeInTheDocument()
+    expect(getAdminKey()).toBeNull()
+  })
+
+  it('shows a connection message when the server cannot be reached', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    const user = userEvent.setup()
+
+    renderApp('/admin/login')
+
+    await user.type(await screen.findByLabelText(/api key/i), 'whatever')
+    await user.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(await screen.findByText(/couldn.t reach the server/i)).toBeInTheDocument()
+    expect(screen.queryByText(/invalid api key/i)).not.toBeInTheDocument()
+  })
 })
