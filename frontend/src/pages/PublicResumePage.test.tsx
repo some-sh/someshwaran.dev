@@ -12,6 +12,34 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const fetchMock = vi.fn()
 
+function resumeFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    name: 'Internal label',
+    is_default: true,
+    headline: '',
+    summary: '',
+    created_at: '2024-01-01T00:00:00',
+    updated_at: '2024-01-01T00:00:00',
+    personal_info: {
+      id: 1,
+      full_name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      phone: null,
+      location: null,
+      website: null,
+      github: null,
+      linkedin: null,
+    },
+    skills: [],
+    experience: [],
+    projects: [],
+    education: [],
+    certifications: [],
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
@@ -36,6 +64,7 @@ describe('PublicResumePage', () => {
         id: 1,
         name: 'Backend-focused',
         is_default: true,
+        headline: 'Senior SDET | Python',
         summary: 'Backend engineer.',
         created_at: '2024-01-01T00:00:00',
         updated_at: '2024-01-01T00:00:00',
@@ -58,7 +87,7 @@ describe('PublicResumePage', () => {
             location: null,
             start_date: '2022-01-01',
             end_date: null,
-            highlights: ['Built the test framework'],
+            highlights: [{ text: 'Built the test framework', group: null }],
           },
         ],
         projects: [],
@@ -83,6 +112,7 @@ describe('PublicResumePage', () => {
         id: 1,
         name: 'Senior SDET',
         is_default: true,
+        headline: '',
         summary: '',
         created_at: '2024-01-01T00:00:00',
         updated_at: '2024-01-01T00:00:00',
@@ -138,5 +168,83 @@ describe('PublicResumePage', () => {
     renderApp('/')
 
     await waitFor(() => expect(screen.getByText(/couldn.t load the resume/i)).toBeInTheDocument())
+  })
+  it('shows the headline, links the email and safe URLs, and never links an unsafe one', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        resumeFixture({
+          headline: 'Senior SDET | Python, Playwright',
+          personal_info: {
+            id: 1,
+            full_name: 'Ada Lovelace',
+            email: 'ada@example.com',
+            phone: null,
+            location: 'London',
+            website: 'javascript:alert(1)',
+            github: null,
+            linkedin: 'https://www.linkedin.com/in/ada',
+          },
+        }),
+      ),
+    )
+
+    renderApp('/')
+
+    expect(await screen.findByText('Senior SDET | Python, Playwright')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'ada@example.com' })).toHaveAttribute(
+      'href',
+      'mailto:ada@example.com',
+    )
+    expect(screen.getByRole('link', { name: 'linkedin.com/in/ada' })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/in/ada',
+    )
+    // Shown, but as text: no link is ever built from a javascript: value.
+    expect(screen.getByText(/javascript:alert\(1\)/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /javascript/ })).not.toBeInTheDocument()
+  })
+
+  it('renders grouped highlights under their sub-headings', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        resumeFixture({
+          experience: [
+            {
+              id: 1,
+              company: 'Acme',
+              role: 'SDET',
+              location: null,
+              start_date: '2019-05-01',
+              end_date: null,
+              highlights: [
+                { text: 'Built the platform', group: 'Engineering platform' },
+                { text: 'Cut setup time', group: 'Engineering platform' },
+                { text: 'Validated releases', group: 'Release quality' },
+              ],
+            },
+          ],
+        }),
+      ),
+    )
+
+    renderApp('/')
+
+    expect(await screen.findByText('Engineering platform')).toBeInTheDocument()
+    expect(screen.getByText('Release quality')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Built the platform',
+      'Cut setup time',
+      'Validated releases',
+    ])
+  })
+
+  it('sets the tab title to the name and headline, and restores it on leaving', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(resumeFixture({ headline: 'Senior SDET' })))
+
+    const { unmount } = renderApp('/')
+
+    await waitFor(() => expect(document.title).toBe('Ada Lovelace — Senior SDET'))
+    unmount()
+    expect(document.title).toBe('someshwaran.dev')
   })
 })

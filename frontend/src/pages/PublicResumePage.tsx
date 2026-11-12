@@ -1,13 +1,26 @@
-import { type ReactNode } from 'react'
+import { Fragment, type ReactNode, useEffect } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ApiError, defaultResumeExportUrl } from '@/lib/api'
+import { groupHighlights } from '@/lib/highlights'
+import { contactItems } from '@/lib/links'
 import { useDefaultResumeQuery } from '@/lib/queries'
 
 export function PublicResumePage() {
   const query = useDefaultResumeQuery()
+
+  // The browser tab / search-result title: "Name — Headline" once loaded.
+  const loaded = query.data
+  useEffect(() => {
+    if (!loaded) return
+    const name = loaded.personal_info?.full_name ?? loaded.name
+    document.title = loaded.headline ? `${name} — ${loaded.headline}` : name
+    return () => {
+      document.title = 'someshwaran.dev'
+    }
+  }, [loaded])
 
   if (query.isPending) {
     return <CenteredMessage>Loading…</CenteredMessage>
@@ -22,21 +35,31 @@ export function PublicResumePage() {
 
   const resume = query.data
   const info = resume.personal_info
-  const contactParts = info
-    ? [info.email, info.phone, info.location, info.website, info.github, info.linkedin].filter(
-        (part): part is string => Boolean(part),
-      )
-    : []
+  const contact = info ? contactItems(info) : []
   const skillsByCategory = groupBy(resume.skills, (skill) => skill.category ?? 'General')
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-12">
       <header className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold">{info?.full_name ?? resume.name}</h1>
-        {contactParts.length > 0 && (
-          <p className="text-muted-foreground text-sm">{contactParts.join(' • ')}</p>
+        {resume.headline && <p className="text-lg font-medium">{resume.headline}</p>}
+        {contact.length > 0 && (
+          <p className="text-muted-foreground text-sm">
+            {contact.map((item, index) => (
+              <Fragment key={item.text}>
+                {index > 0 && ' • '}
+                {item.href ? (
+                  <a href={item.href} className="text-foreground underline underline-offset-2">
+                    {item.text}
+                  </a>
+                ) : (
+                  item.text
+                )}
+              </Fragment>
+            ))}
+          </p>
         )}
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-2 pt-2 print:hidden">
           <Button asChild variant="outline" size="sm">
             <a href={defaultResumeExportUrl('pdf')}>Download PDF</a>
           </Button>
@@ -84,15 +107,18 @@ export function PublicResumePage() {
                   </p>
                 </div>
                 {exp.location && <p className="text-muted-foreground text-sm">{exp.location}</p>}
-                {exp.highlights.length > 0 && (
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                    {exp.highlights.map((highlight, index) => (
-                      // Highlights are free-text with no stable id; index is fine
-                      // since this list is only ever replaced wholesale, never reordered in place.
-                      <li key={index}>{highlight}</li>
-                    ))}
-                  </ul>
-                )}
+                {groupHighlights(exp.highlights).map((group, groupIndex) => (
+                  <div key={groupIndex} className="mt-2">
+                    {group.title && <p className="text-sm font-medium">{group.title}</p>}
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {group.bullets.map((bullet, index) => (
+                        // Bullets are free text with no stable id; index is fine since
+                        // this list is only ever replaced wholesale, never reordered in place.
+                        <li key={index}>{bullet}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

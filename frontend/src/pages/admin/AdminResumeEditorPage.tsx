@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { highlightsToText, textToHighlights } from '@/lib/highlights'
 import {
   useAdminResumeQuery,
   useCreateResumeMutation,
@@ -93,6 +94,7 @@ export function AdminResumeEditorPage() {
   const seededForIdRef = useRef<number | null>(null)
 
   const [name, setName] = useState('')
+  const [headline, setHeadline] = useState('')
   const [summary, setSummary] = useState('')
   const [personalInfo, setPersonalInfo] = useState<PersonalInfoInput>(BLANK_PERSONAL_INFO)
 
@@ -107,6 +109,7 @@ export function AdminResumeEditorPage() {
     if (resumeId === null || !resume || seededForIdRef.current === resumeId) return
     seededForIdRef.current = resumeId
     setName(resume.name)
+    setHeadline(resume.headline)
     setSummary(resume.summary)
     setPersonalInfo(resume.personal_info ? { ...resume.personal_info } : BLANK_PERSONAL_INFO)
     skills.setItems(resume.skills.map(keyed))
@@ -124,6 +127,7 @@ export function AdminResumeEditorPage() {
 
     const payload: ResumeInput = {
       name,
+      headline,
       summary,
       personal_info: personalInfo,
       skills: skills.items.map(stripKey),
@@ -157,6 +161,13 @@ export function AdminResumeEditorPage() {
           <CardContent className="flex flex-col gap-4">
             <Field label="Internal name">
               <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </Field>
+            <Field label="Headline (shown under your name)">
+              <Input
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value)}
+                placeholder="Senior SDET | Test Automation & Infrastructure | Python, Playwright"
+              />
             </Field>
             <Field label="Summary">
               <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} />
@@ -294,13 +305,6 @@ function EmptyHint() {
   return <p className="text-muted-foreground text-sm">None yet.</p>
 }
 
-function linesToList(value: string): string[] {
-  return value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-}
-
 function commaToList(value: string): string[] {
   return value
     .split(',')
@@ -339,6 +343,12 @@ function SkillsSection({ list }: { list: ListApi<SkillInput> }) {
 }
 
 function ExperienceSection({ list }: { list: ListApi<ExperienceInput> }) {
+  // The text being typed, per role. Highlights are stored structured, but a
+  // textarea that is rebuilt from the parsed list on every keystroke drops the
+  // blank line you just created with Enter, so what the user typed is kept as
+  // typed and converted on each change.
+  const [typed, setTyped] = useState<Record<string, string>>({})
+
   return (
     <SectionCard
       title="Experience"
@@ -394,11 +404,14 @@ function ExperienceSection({ list }: { list: ListApi<ExperienceInput> }) {
               />
             </Field>
           </div>
-          <Field label="Highlights (one per line)">
+          <Field label="Highlights (one per line; a line starting with ## names a group, a bare ## ends it)">
             <Textarea
-              value={item.highlights.join('\n')}
-              onChange={(e) => list.update(item.key, { highlights: linesToList(e.target.value) })}
-              rows={4}
+              value={typed[item.key] ?? highlightsToText(item.highlights)}
+              onChange={(e) => {
+                setTyped((current) => ({ ...current, [item.key]: e.target.value }))
+                list.update(item.key, { highlights: textToHighlights(e.target.value) })
+              }}
+              rows={8}
             />
           </Field>
           <div>
