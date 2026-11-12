@@ -188,13 +188,49 @@ export async function downloadAdminExport(
     throw new ApiError(response.status, response.statusText)
   }
 
-  const blob = await response.blob()
+  saveBlob(await response.blob(), `${filenameHint}.${format}`)
+}
+
+function saveBlob(blob: Blob, filename: string): void {
   const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = objectUrl
-  link.download = `${filenameHint}.${format}`
+  link.download = filename
   document.body.appendChild(link)
   link.click()
   link.remove()
   URL.revokeObjectURL(objectUrl)
 }
+
+// --- Admin: backup and restore ---
+
+export interface ImportResult {
+  created: number[]
+  skipped: string[]
+  default_id: number | null
+}
+
+/** Downloads every resume as one JSON backup file. */
+export async function downloadBackup(): Promise<void> {
+  const key = getAdminKey()
+  if (!key) {
+    throw new ApiError(401, 'No admin API key is set')
+  }
+  const response = await fetch(`${API_BASE_URL}/api/admin/export`, {
+    headers: { Authorization: `Bearer ${key}` },
+  })
+  if (!response.ok) {
+    throw new ApiError(response.status, response.statusText)
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'someshwaran-backup.json'
+  saveBlob(await response.blob(), filename)
+}
+
+/** Restores a parsed backup file. All or nothing on the server; with
+ * ``replace`` every existing resume is deleted first. */
+export const restoreBackup = (backup: unknown, replace: boolean): Promise<ImportResult> =>
+  adminFetch(`/api/admin/import?replace=${replace}`, {
+    method: 'POST',
+    body: JSON.stringify(backup),
+  })

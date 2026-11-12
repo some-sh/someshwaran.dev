@@ -14,6 +14,7 @@ import {
   getDefaultResume,
   getResumeById,
   listResumes,
+  restoreBackup,
   setDefaultResume,
   updateResume,
 } from './api'
@@ -84,6 +85,18 @@ export function useCloneResumeMutation() {
   return useMutation({
     mutationFn: (id: number) => cloneResume(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.adminResumes }),
+  })
+}
+
+export function useRestoreBackupMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ backup, replace }: { backup: unknown; replace: boolean }) =>
+      restoreBackup(backup, replace),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminResumes })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.defaultResume })
+    },
   })
 }
 
