@@ -84,10 +84,23 @@ app.include_router(public_resumes_router)
 app.mount("/api/mcp", AdminBearerAuthMiddleware(_MCPDispatch(app)))
 
 
+_FRONTEND_DIR = _BACKEND_DIR / "frontend_dist"
+
+
 @app.get("/health")
-def health_check() -> dict[str, str]:
-    """Liveness probe used by CI, deploy checks, and local smoke tests."""
-    return {"status": "ok"}
+def health_check() -> dict[str, str | bool]:
+    """Liveness probe used by CI, deploy checks, and local smoke tests.
+
+    Also reports whether the built frontend was found and mounted, and
+    where it was looked for: a deploy can succeed while silently shipping
+    without frontend_dist/ (it is a gitignored build output), and this
+    makes that visible with a plain curl instead of needing platform logs.
+    """
+    return {
+        "status": "ok",
+        "frontend_mounted": _FRONTEND_DIR.is_dir(),
+        "frontend_dir": str(_FRONTEND_DIR),
+    }
 
 
 def _mount_frontend_if_built(app: FastAPI, directory: Path) -> None:
@@ -106,4 +119,4 @@ def _mount_frontend_if_built(app: FastAPI, directory: Path) -> None:
         app.frontend("/", directory=directory, fallback="auto")
 
 
-_mount_frontend_if_built(app, _BACKEND_DIR / "frontend_dist")
+_mount_frontend_if_built(app, _FRONTEND_DIR)
