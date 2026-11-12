@@ -145,8 +145,10 @@ export function PublicResumePage() {
                     </span>
                   )}
                 </p>
-                {edu.end_date && (
-                  <p className="text-muted-foreground text-sm">{formatMonthYear(edu.end_date)}</p>
+                {formatYears(edu.start_date, edu.end_date) && (
+                  <p className="text-muted-foreground text-sm">
+                    {formatYears(edu.start_date, edu.end_date)}
+                  </p>
                 )}
               </div>
             ))}
@@ -197,9 +199,20 @@ function groupBy<T>(items: T[], keyFn: (item: T) => string): Record<string, T[]>
   return result
 }
 
+// Pinned to en-US so the page matches the PDF/DOCX exports (see
+// backend/app/services/export_service.py) regardless of the visitor's locale.
 function formatMonthYear(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', {
     month: 'short',
     year: 'numeric',
   })
+}
+
+// Education is shown by year only: the API stores full dates, but a degree's
+// month would be a made-up precision (same rule as the exports).
+function formatYears(start: string | null, end: string | null): string {
+  const startYear = start ? start.slice(0, 4) : ''
+  const endYear = end ? end.slice(0, 4) : ''
+  if (startYear && endYear && startYear !== endYear) return `${startYear} – ${endYear}`
+  return endYear || startYear
 }
