@@ -12,7 +12,12 @@
 backend/.venv/
 backend/data/
 backend/*.db
-backend/frontend_dist/
+# NOTE: backend/frontend_dist/ is deliberately NOT ignored. scripts/deploy.sh
+# uploads the repo root to FastAPI Cloud with that directory inside it, and
+# the remote image build appears to honor this file: listing it here made the
+# deploy succeed while shipping without the frontend (/health reported
+# frontend_mounted: false). The Docker fallback is unaffected in practice: its
+# own frontend stage copies fresh files over ./frontend_dist.
 
 frontend/node_modules/
 frontend/dist/
