@@ -10,16 +10,18 @@
 # throwaway/local use, or point APP_DATABASE_URL elsewhere):
 #   docker run -p 8000:8000 -e APP_ADMIN_API_KEY=... -v app-data:/app/data someshwaran-dev
 
-FROM node:24-slim AS frontend
+FROM node:26-slim AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Matches the Python version CI pins (see .github/workflows/ci.yml) — one
-# version across dev, CI, and this image, rather than three to keep in sync.
-FROM python:3.11-slim AS backend
+# Matches backend/.python-version and CI — one version across dev, CI and this
+# image, rather than three to keep in sync. (PyYAML has no 3.15 wheel yet, so uv
+# builds it from source here; with no C compiler in -slim it falls back to the
+# pure-Python implementation, which is all uvicorn's log config needs.)
+FROM python:3.15-slim AS backend
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/

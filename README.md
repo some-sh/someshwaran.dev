@@ -8,6 +8,19 @@ See [CLAUDE.md](./CLAUDE.md) for the architecture, stack decisions, and phase pl
 (deploy to FastAPI Cloud, gated on CI, with a Dockerfile kept as a fallback) is done. Phase 9
 (polish, multiple templates, open-source prep) is still ahead.
 
+## Versions
+
+Developed, tested and deployed on **Python 3.15** and **Node 26** (the current LTS), and the
+Docker image uses the same (`python:3.15-slim`, `node:26-slim`). The oldest Python the backend
+supports is **3.11** (`requires-python`), and CI runs the whole backend suite on it as its own job,
+so something that only works on a newer Python can't slip in. `ruff` and `mypy` are pinned to 3.11
+syntax for the same reason. `backend/.python-version` is what `uv` (and the FastAPI Cloud build)
+installs.
+
+PyYAML (pulled in by uvicorn) has no Python 3.15 wheel yet, so `uv sync` builds it from source on
+3.15. That works without a C compiler too — it falls back to the pure-Python implementation, which
+is all uvicorn's log config needs — and goes away once PyYAML publishes 3.15 wheels.
+
 ## Layout
 
 - `backend/` — FastAPI app (Python, managed with [uv](https://docs.astral.sh/uv/))
