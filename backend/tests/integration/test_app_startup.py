@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
-from app.db import get_engine
+from app.db import dispose_engine
 
 
 def test_app_serves_a_db_backed_route_on_a_fresh_nested_db_path(
@@ -28,7 +28,7 @@ def test_app_serves_a_db_backed_route_on_a_fresh_nested_db_path(
 
     monkeypatch.setenv("APP_DATABASE_URL", f"sqlite:///{db_path}")
     get_settings.cache_clear()
-    get_engine.cache_clear()
+    dispose_engine()
 
     try:
         from app.main import app
@@ -45,7 +45,7 @@ def test_app_serves_a_db_backed_route_on_a_fresh_nested_db_path(
         assert db_path.exists()
     finally:
         get_settings.cache_clear()
-        get_engine.cache_clear()
+        dispose_engine()
 
 
 def test_startup_migrations_do_not_silence_the_apps_loggers(
@@ -60,7 +60,7 @@ def test_startup_migrations_do_not_silence_the_apps_loggers(
 
     monkeypatch.setenv("APP_DATABASE_URL", f"sqlite:///{tmp_path / 'logs.db'}")
     get_settings.cache_clear()
-    get_engine.cache_clear()
+    dispose_engine()
     loggers = [
         logging.getLogger(name) for name in ("uvicorn.error", "uvicorn.access", "app.security")
     ]
@@ -70,4 +70,4 @@ def test_startup_migrations_do_not_silence_the_apps_loggers(
         assert [logger.disabled for logger in loggers] == [False, False, False]
     finally:
         get_settings.cache_clear()
-        get_engine.cache_clear()
+        dispose_engine()

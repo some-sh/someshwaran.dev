@@ -1,23 +1,28 @@
 """FastAPI application entrypoint."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from sqlmodel import Session
 from starlette.types import Receive, Scope, Send
 
 from app.api.admin import router as admin_router
 from app.api.public import router as public_resumes_router
+from app.core.cache_headers import StaticCacheHeadersMiddleware
 from app.core.config import get_settings
 from app.core.security import AdminBearerAuthMiddleware, warn_if_admin_key_is_weak
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.db import get_engine
+from app.db import dispose_engine, get_engine, get_session
 from app.mcp_server import build_mcp_asgi_app, build_mcp_server
+
+logger = logging.getLogger("app.main")
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -87,8 +92,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # lifespans under Mount) — the session manager has to be entered here
     # instead, or the MCP server's first request fails. See
     # app/mcp_server.py and the SDK's docs/run/asgi.md.
-    async with mcp_server.session_manager.run():
-        yield
+    try:
+        async with mcp_server.session_manager.run():
+            yield
+    finally:
+        dispose_engine()
 
 
 _docs_enabled = get_settings().enable_docs
@@ -109,6 +117,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(StaticCacheHeadersMiddleware)
 # Added last so it is the outermost layer: it covers every response, including
 # CORS preflights and the 401s the auth layers return.
 app.add_middleware(SecurityHeadersMiddleware)
@@ -137,6 +146,22 @@ def health_check() -> dict[str, str | bool]:
         "frontend_mounted": _FRONTEND_DIR.is_dir(),
         "frontend_dir": str(_FRONTEND_DIR),
     }
+
+
+@app.get("/health/ready")
+def readiness(response: Response, session: Session = Depends(get_session)) -> dict[str, str]:
+    """Readiness probe: can this instance actually serve requests, i.e. reach
+    its database? ``/health`` only says the process is alive; during a database
+    outage it would keep reporting "ok" while every resume request failed.
+    Returns 503 when the database cannot be queried. The reason is logged, not
+    returned: this endpoint is public."""
+    try:
+        session.exec(text("SELECT 1"))  # type: ignore[call-overload]
+    except Exception:
+        logger.exception("Readiness check failed: database unreachable")
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {"status": "unavailable", "database": "unreachable"}
+    return {"status": "ok", "database": "ok"}
 
 
 def _mount_frontend_if_built(app: FastAPI, directory: Path) -> None:

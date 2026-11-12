@@ -1,4 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
+import { type ChangeEvent, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,13 +11,124 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { clearAdminKey, downloadAdminExport } from '@/lib/api'
+import { ApiError, clearAdminKey, downloadAdminExport, downloadBackup } from '@/lib/api'
 import {
   useAdminResumesQuery,
   useCloneResumeMutation,
   useDeleteResumeMutation,
+  useRestoreBackupMutation,
   useSetDefaultResumeMutation,
 } from '@/lib/queries'
+
+/** Download every resume as one file, and restore from such a file. A resume
+ * lives in a single database, so a copy you keep elsewhere is the safety net. */
+function BackupPanel({ resumeCount }: { resumeCount: number }) {
+  const restore = useRestoreBackupMutation()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [replace, setReplace] = useState(false)
+  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+
+  async function handleDownload() {
+    setMessage(null)
+    try {
+      await downloadBackup()
+    } catch (error) {
+      setMessage({
+        kind: 'error',
+        text: error instanceof Error ? error.message : 'Download failed',
+      })
+    }
+  }
+
+  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = '' // allow choosing the same file again
+    if (!file) return
+    setMessage(null)
+
+    let backup: unknown
+    try {
+      backup = JSON.parse(await file.text())
+    } catch {
+      setMessage({ kind: 'error', text: "That file isn't valid JSON." })
+      return
+    }
+    if (
+      replace &&
+      !window.confirm(
+        `Replace everything? This deletes all ${resumeCount} existing resume${resumeCount === 1 ? '' : 's'} and restores only what is in the file.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      const result = await restore.mutateAsync({ backup, replace })
+      const skipped = result.skipped.length
+      setMessage({
+        kind: 'ok',
+        text:
+          `Restored ${result.created.length} resume${result.created.length === 1 ? '' : 's'}` +
+          (skipped > 0
+            ? `; skipped ${skipped} that already exist (${result.skipped.join(', ')})`
+            : '') +
+          '.',
+      })
+    } catch (error) {
+      setMessage({
+        kind: 'error',
+        text:
+          error instanceof ApiError || error instanceof Error
+            ? `Nothing was changed. ${error.message}`
+            : 'Restore failed. Nothing was changed.',
+      })
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-md border p-4" aria-label="Backup">
+      <div>
+        <h2 className="font-medium">Backup</h2>
+        <p className="text-muted-foreground text-sm">
+          Keep a copy of every resume as one file. Restoring skips resumes whose name already exists
+          and never changes which one is published.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={handleDownload}>
+          Download backup
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => fileInput.current?.click()}
+          disabled={restore.isPending}
+        >
+          Restore from file…
+        </Button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          aria-label="Backup file"
+          onChange={handleFile}
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+          Replace all existing resumes
+        </label>
+      </div>
+      {message && (
+        <p
+          role={message.kind === 'error' ? 'alert' : 'status'}
+          className={message.kind === 'error' ? 'text-destructive text-sm' : 'text-sm'}
+        >
+          {message.text}
+        </p>
+      )}
+    </section>
+  )
+}
 
 export function AdminResumeListPage() {
   const navigate = useNavigate()
@@ -83,6 +195,8 @@ export function AdminResumeListPage() {
       {mutationFailed && (
         <p className="text-destructive text-sm">Something went wrong — try again.</p>
       )}
+
+      <BackupPanel resumeCount={resumes.length} />
 
       {resumes.length === 0 ? (
         <p className="text-muted-foreground text-sm">No resumes yet — create one to get started.</p>

@@ -11,7 +11,7 @@ build_mcp_server() rather than sharing one — see that function's
 docstring for why it's a factory, not a singleton, in the first place.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
@@ -25,7 +25,7 @@ from app.mcp_server import build_mcp_server
 
 
 @pytest.fixture(autouse=True)
-def _temp_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _temp_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Points app/mcp_server.py's _session() at a fresh temp-file SQLite DB
     for each test, the same way tests/conftest.py's `client` fixture does
     for the REST API — MCP tools open their own Session directly rather
@@ -36,6 +36,8 @@ def _temp_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     SQLModel.metadata.create_all(engine)
     monkeypatch.setattr(mcp_server, "get_engine", lambda: engine)
+    yield
+    engine.dispose()  # Python 3.13+ warns about SQLite connections left unclosed
 
 
 @pytest.fixture

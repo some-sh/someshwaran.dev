@@ -22,6 +22,12 @@ updates:
     schedule: { interval: weekly }
     groups:
       frontend: { update-types: [minor, patch] }
+    ignore:
+      # @types/node must match the Node major used in CI and the Dockerfile
+      # (currently 26). Bump all three by hand together instead of following
+      # whichever major is newest.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /e2e
@@ -32,3 +38,9 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # Odd-numbered Node releases are short-lived "Current" lines that never
+      # become LTS (25 was skipped for the same reason); stay on even majors.
+      # Revisit when Node 28 ships.
+      - dependency-name: node
+        versions: ["27.x"]

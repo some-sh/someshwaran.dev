@@ -27,7 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.core.config import get_settings, normalize_database_url
-from app.db import get_engine
+from app.db import dispose_engine, get_engine
 from app.main import _run_migrations
 from app.schemas.resume import PersonalInfoInput, ResumeCreate, SkillInput
 from app.services import resume_service
@@ -53,9 +53,9 @@ def postgres_url(monkeypatch: pytest.MonkeyPatch) -> Generator[str, None, None]:
 
     monkeypatch.setenv("APP_DATABASE_URL", url)
     get_settings.cache_clear()
-    get_engine.cache_clear()
+    dispose_engine()
     yield url
-    get_engine.cache_clear()
+    dispose_engine()
     get_settings.cache_clear()
 
 
@@ -243,3 +243,40 @@ def test_concurrent_set_default_leaves_exactly_one_default(postgres_url: str) ->
     with get_engine().connect() as conn:
         count = conn.execute(text("SELECT count(*) FROM resumes WHERE is_default")).scalar_one()
     assert count == 1
+
+
+def test_backup_round_trip_and_replace_on_postgres(postgres_url: str) -> None:
+    """Import deletes and re-inserts inside one transaction while the partial
+    unique index on is_default is live: only a real Postgres shows that the
+    delete/flush/insert ordering is right."""
+    from app.schemas.backup import BackupFile
+    from app.services import backup_service
+
+    command.upgrade(_alembic_config(), "head")
+    with Session(get_engine()) as session:
+        first = resume_service.create_resume(session, _new_resume("one"))
+        second = resume_service.create_resume(session, _new_resume("two"))
+        assert first.id is not None and second.id is not None
+        resume_service.set_default_resume(session, second.id)
+        exported = backup_service.export_backup(session)
+
+    assert [r["name"] for r in exported["resumes"]] == ["one", "two"]
+    assert [r["is_default"] for r in exported["resumes"]] == [False, True]
+
+    with Session(get_engine()) as session:
+        result = backup_service.import_backup(
+            session, BackupFile.model_validate(exported), replace=True
+        )
+        names = {r.name: r for r in resume_service.list_resumes(session)}
+        default = resume_service.get_default_resume(session)
+
+        assert len(result.created) == 2 and result.skipped == []
+        assert set(names) == {"one", "two"}
+        assert default is not None and default.name == "two"
+        assert [s.name for s in names["one"].skills] == ["c", "a", "b"]  # order survives
+
+    with Session(get_engine()) as session:  # importing again skips everything
+        again = backup_service.import_backup(
+            session, BackupFile.model_validate(exported), replace=False
+        )
+        assert again.created == [] and sorted(again.skipped) == ["one", "two"]
