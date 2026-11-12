@@ -211,9 +211,10 @@ renderer over the one underlying schema.
 
 ### CORS
 
-The frontend is served from its own origin, so the browser needs an explicit allowlist:
+In production the frontend is served by the API itself (same origin), so CORS is not involved.
+It only matters for local development, where Vite runs on another port:
 `cors_allowed_origins` (`APP_CORS_ALLOWED_ORIGINS`, comma-separated) defaults to the Vite dev
-server, `http://localhost:5173`. Add the deployed frontend's origin once phase 8 picks one.
+server, `http://localhost:5173`. Set it only if the frontend is ever hosted on a separate origin.
 
 ## Frontend
 
