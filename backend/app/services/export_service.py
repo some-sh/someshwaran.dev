@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import re
+from datetime import date
 
 from docx import Document
 from reportlab.lib.pagesizes import LETTER
@@ -19,7 +20,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
 
-from app.models.resume import Experience, Resume
+from app.models.resume import Education, Experience, Resume
 
 
 def slugify_filename(name: str) -> str:
@@ -38,9 +39,29 @@ def _contact_line(resume: Resume) -> str:
     return " • ".join(parts)
 
 
+# Fixed English month names rather than strftime("%b"), which depends on the
+# server's locale and would make PDF/DOCX output differ between environments.
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _month_year(value: date) -> str:
+    return f"{_MONTHS[value.month - 1]} {value.year}"
+
+
 def _experience_dates(exp: Experience) -> str:
-    end = exp.end_date.isoformat() if exp.end_date else "Present"
-    return f"{exp.start_date.isoformat()} – {end}"
+    end = _month_year(exp.end_date) if exp.end_date else "Present"
+    return f"{_month_year(exp.start_date)} – {end}"
+
+
+def _education_years(edu: Education) -> str:
+    """Years only: degrees are described by year, and the stored value is a
+    full date only because the column type needs one — showing 'Jan 2019'
+    would present a made-up month as fact."""
+    start = str(edu.start_date.year) if edu.start_date else ""
+    end = str(edu.end_date.year) if edu.end_date else ""
+    if start and end and start != end:
+        return f"{start} – {end}"
+    return end or start
 
 
 def _skills_by_category(resume: Resume) -> dict[str, list[str]]:
@@ -109,6 +130,8 @@ def render_resume_pdf(resume: Resume) -> bytes:
             line = f"<b>{edu.degree}</b>, {edu.institution}"
             if edu.field_of_study:
                 line += f" — {edu.field_of_study}"
+            if years := _education_years(edu):
+                line += f" ({years})"
             story.append(Paragraph(line, body))
 
     if resume.certifications:
@@ -163,6 +186,8 @@ def render_resume_docx(resume: Resume) -> bytes:
             line = f"{edu.degree}, {edu.institution}"
             if edu.field_of_study:
                 line += f" — {edu.field_of_study}"
+            if years := _education_years(edu):
+                line += f" ({years})"
             document.add_paragraph(line)
 
     if resume.certifications:
