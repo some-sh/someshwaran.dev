@@ -6,15 +6,19 @@ here that skips it. Public access to resume data (the current default
 only) lives in app/api/public.py instead.
 """
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
 from app.api import exports
 from app.core.security import require_admin
 from app.db import get_session
 from app.models.resume import Resume
+from app.schemas.backup import BackupFile, ImportResult
 from app.schemas.resume import ResumeCreate, ResumeRead, ResumeSummary, ResumeUpdate
-from app.services import export_service, resume_service
+from app.services import backup_service, export_service, resume_service
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -105,3 +109,25 @@ def export_resume_docx(
 ) -> Response:
     stamp = _stamp_or_404(session, resume_id)
     return exports.export_response(request, session, stamp, "docx", template, public=False)
+
+
+@router.get("/export")
+def export_backup(session: Session = Depends(get_session)) -> JSONResponse:
+    """Every resume version in one downloadable JSON backup file."""
+    filename = f"someshwaran-backup-{datetime.now(UTC):%Y-%m-%d}.json"
+    return JSONResponse(
+        backup_service.export_backup(session),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import", response_model=ImportResult)
+def import_backup(
+    backup: BackupFile, replace: bool = False, session: Session = Depends(get_session)
+) -> ImportResult:
+    """Restore resumes from a backup file, all or nothing.
+
+    Resumes whose name already exists are skipped (so re-running is harmless) and
+    the current default is never taken away. ``replace=true`` deletes every
+    existing resume first, in the same transaction."""
+    return backup_service.import_backup(session, backup, replace=replace)

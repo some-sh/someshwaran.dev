@@ -38,8 +38,11 @@ def _positioned(model: type[_M], items: Sequence[BaseModel]) -> list[_M]:
     return [model(**item.model_dump(), order_index=index) for index, item in enumerate(items)]
 
 
-def create_resume(session: Session, data: ResumeCreate) -> Resume:
-    resume = Resume(
+def build_resume(data: ResumeCreate) -> Resume:
+    """A new Resume (with every section, positioned) from validated input, not
+    yet added to a session. Shared by create_resume and backup import, so a
+    restored resume is built by exactly the code that builds a created one."""
+    return Resume(
         name=data.name,
         headline=data.headline,
         summary=data.summary,
@@ -50,6 +53,10 @@ def create_resume(session: Session, data: ResumeCreate) -> Resume:
         education=_positioned(Education, data.education),
         certifications=_positioned(Certification, data.certifications),
     )
+
+
+def create_resume(session: Session, data: ResumeCreate) -> Resume:
+    resume = build_resume(data)
     session.add(resume)
     session.commit()
     session.refresh(resume)
@@ -177,10 +184,16 @@ def set_default_resume(session: Session, resume_id: int) -> Resume | None:
     raise AssertionError("unreachable")  # pragma: no cover
 
 
-def _set_default(session: Session, resume_id: int) -> Resume | None:
+def lock_default_changes(session: Session) -> None:
+    """Make concurrent changes to "which resume is the default" take turns, for
+    the rest of this transaction (Postgres; SQLite serializes writers itself)."""
     if session.get_bind().dialect.name == "postgresql":
         # Released automatically at commit/rollback.
         session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SET_DEFAULT_LOCK_KEY})
+
+
+def _set_default(session: Session, resume_id: int) -> Resume | None:
+    lock_default_changes(session)
 
     resume = session.get(Resume, resume_id)
     if resume is None:
