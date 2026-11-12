@@ -21,11 +21,17 @@ relationship()". Forward references to classes defined later in this
 file are quoted individually instead.
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Optional
 
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, Relationship, SQLModel
+
+
+def _utcnow() -> datetime:
+    # Timezone-aware: SQLModel >=0.0.49 rejects naive datetimes, and
+    # datetime.utcnow() is deprecated since Python 3.12.
+    return datetime.now(UTC)
 
 
 class Resume(SQLModel, table=True):
@@ -35,8 +41,8 @@ class Resume(SQLModel, table=True):
     name: str = Field(index=True)  # internal label, e.g. "Backend-focused"
     is_default: bool = Field(default=False, index=True)
     summary: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
     personal_info: Optional["PersonalInfo"] = Relationship(
         back_populates="resume",
