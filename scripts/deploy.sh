@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the frontend, copies it into backend/frontend_dist/ (see
 # app/main.py's app.frontend() mount and backend/.fastapicloudignore),
-# then deploys the backend — which now serves the API and the frontend
+# then deploys the backend (from the repo root, see below) — which now serves the API and the frontend
 # from the same origin. Run from anywhere; only step 3 talks to FastAPI
 # Cloud. Used both for a manual local deploy (an already-logged-in
 # `fastapi` CLI session on this machine — see README's Auth/Deploying
@@ -21,4 +21,10 @@ rm -rf "$REPO_ROOT/backend/frontend_dist"
 cp -r "$REPO_ROOT/frontend/dist" "$REPO_ROOT/backend/frontend_dist"
 
 echo "==> Deploying backend (includes frontend_dist/ — see .fastapicloudignore)"
-(cd "$REPO_ROOT/backend" && uv run fastapi deploy)
+# Run from the repo root, not backend/: the FastAPI Cloud app is connected to
+# this repository with its app directory set to `backend`, so the CLI expects
+# to upload the whole repo and finds `backend/` inside it. Uploading from
+# backend/ itself made the remote build look for `backend/backend` and fail
+# with "Python setup could not access a required path". `--project` makes uv
+# use backend/'s environment (and .python-version) without changing cwd.
+(cd "$REPO_ROOT" && uv run --project backend fastapi deploy)

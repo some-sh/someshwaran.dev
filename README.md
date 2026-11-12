@@ -142,11 +142,12 @@ backend's `require_admin` (see CLAUDE.md's Auth section).
 ```
 
 Builds the frontend, copies it into `backend/frontend_dist/`, then runs `fastapi deploy` from
-`backend/`. `app/main.py` serves it via FastAPI's own `app.frontend()` (checked only after every
+the **repo root** (the FastAPI Cloud app is connected to this repo with its app directory set to
+`backend`, so the CLI uploads the whole repo and the remote builds from `backend/`; deploying from
+`backend/` itself fails the remote build). `app/main.py` serves it via FastAPI's own `app.frontend()` (checked only after every
 real `/api/*` and `/health` route — it can never shadow them), falling back to `index.html` for
 client-side routes so a hard refresh on `/admin/login` works. `backend/frontend_dist/` is
-gitignored (it's a build output) but explicitly un-ignored in `.fastapicloudignore`, which takes
-precedence for `fastapi deploy` — see that file. Local dev still runs the two apps separately
+gitignored (it's a build output) but explicitly un-ignored in `backend/.fastapicloudignore` — see that file. Local dev still runs the two apps separately
 (`npm run dev` + `uv run fastapi dev`) on different ports, which is what the CORS config above is
 for; nothing here needs it once same-origin in production.
 
