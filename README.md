@@ -146,7 +146,8 @@ the **repo root** (the FastAPI Cloud app is connected to this repo with its app 
 `backend`, so the CLI uploads the whole repo and the remote builds from `backend/`; deploying from
 `backend/` itself fails the remote build). `app/main.py` serves it via FastAPI's own `app.frontend()` (checked only after every
 real `/api/*` and `/health` route — it can never shadow them), falling back to `index.html` for
-client-side routes so a hard refresh on `/admin/login` works. `backend/frontend_dist/` is
+client-side routes so a hard refresh on `/admin/login` works. `GET /health` reports `frontend_mounted` (and the directory it looked in), so a deploy that
+shipped without `frontend_dist/` is visible with a plain `curl` — no platform logs needed. `backend/frontend_dist/` is
 gitignored (it's a build output) but explicitly un-ignored in `backend/.fastapicloudignore` — see that file. Local dev still runs the two apps separately
 (`npm run dev` + `uv run fastapi dev`) on different ports, which is what the CORS config above is
 for; nothing here needs it once same-origin in production.
