@@ -24,7 +24,8 @@ RUN npm run build
 FROM python:3.15-slim AS backend
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Pinned (not :latest) so an image rebuild can't silently change the installer.
+COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /uvx /usr/local/bin/
 
 # Dependencies in their own layer, installed from the lockfile before any
 # app code is copied in — an app-code-only change then doesn't invalidate
@@ -37,8 +38,18 @@ RUN uv sync --frozen --no-dev
 
 COPY --from=frontend /frontend/dist ./frontend_dist
 
+# Run unprivileged: a compromise of the app shouldn't be root in the container.
+# Only the SQLite directory needs to be writable; mount the volume at /app/data.
+RUN useradd --system --uid 10001 --no-create-home app \
+    && mkdir -p /app/data \
+    && chown app:app /app/data
+USER app
+
 ENV PATH="/app/.venv/bin:${PATH}"
 EXPOSE 8000
+# Liveness only (/health never touches the database); stdlib so no curl is needed.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD ["python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
 # Alembic migrations run at process startup (app/main.py's lifespan), the
 # same as every other environment — no separate migration step needed here.
 CMD ["fastapi", "run", "app/main.py"]
