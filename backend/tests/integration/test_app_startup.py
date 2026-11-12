@@ -46,3 +46,28 @@ def test_app_serves_a_db_backed_route_on_a_fresh_nested_db_path(
     finally:
         get_settings.cache_clear()
         get_engine.cache_clear()
+
+
+def test_startup_migrations_do_not_silence_the_apps_loggers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: Alembic's fileConfig() disables every existing logger by
+    default, so after the startup migration uvicorn's request/error logs and the
+    app's own warnings were silently dropped."""
+    import logging
+
+    from app.main import _run_migrations
+
+    monkeypatch.setenv("APP_DATABASE_URL", f"sqlite:///{tmp_path / 'logs.db'}")
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+    loggers = [
+        logging.getLogger(name) for name in ("uvicorn.error", "uvicorn.access", "app.security")
+    ]
+    try:
+        _run_migrations()
+
+        assert [logger.disabled for logger in loggers] == [False, False, False]
+    finally:
+        get_settings.cache_clear()
+        get_engine.cache_clear()

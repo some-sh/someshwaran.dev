@@ -5,22 +5,26 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { setAdminKey, verifyAdminKey } from '@/lib/api'
+import { checkAdminKey, setAdminKey } from '@/lib/api'
 
 /** "Already have a key" is handled by this route's own beforeLoad
  * (router.tsx) — it never reaches this component in that case. */
 export function AdminLoginPage() {
   const navigate = useNavigate()
   const [key, setKey] = useState('')
-  const [status, setStatus] = useState<'idle' | 'checking' | 'invalid'>('idle')
+  const [status, setStatus] = useState<'idle' | 'checking' | 'invalid' | 'locked' | 'error'>('idle')
+  const [waitMinutes, setWaitMinutes] = useState<number | null>(null)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setStatus('checking')
     const trimmed = key.trim()
-    const ok = await verifyAdminKey(trimmed)
-    if (!ok) {
-      setStatus('invalid')
+    const check = await checkAdminKey(trimmed)
+    if (check.result !== 'ok') {
+      if (check.result === 'locked') {
+        setWaitMinutes(check.retryAfterSeconds ? Math.ceil(check.retryAfterSeconds / 60) : null)
+      }
+      setStatus(check.result)
       return
     }
     setAdminKey(trimmed)
@@ -48,6 +52,17 @@ export function AdminLoginPage() {
               />
             </div>
             {status === 'invalid' && <p className="text-destructive text-sm">Invalid API key.</p>}
+            {status === 'locked' && (
+              <p className="text-destructive text-sm">
+                Too many failed attempts from this address.{' '}
+                {waitMinutes
+                  ? `Try again in about ${waitMinutes} ${waitMinutes === 1 ? 'minute' : 'minutes'}.`
+                  : 'Try again in a few minutes.'}
+              </p>
+            )}
+            {status === 'error' && (
+              <p className="text-destructive text-sm">Couldn’t reach the server. Try again.</p>
+            )}
             <Button type="submit" disabled={status === 'checking' || key.trim() === ''}>
               {status === 'checking' ? 'Checking…' : 'Sign in'}
             </Button>

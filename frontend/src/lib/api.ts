@@ -13,11 +13,14 @@ const ADMIN_KEY_STORAGE_KEY = 'someshwaran-dev.admin-api-key'
 
 export class ApiError extends Error {
   status: number
+  /** Seconds to wait before retrying, from a 429's Retry-After header. */
+  retryAfterSeconds: number | null
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, retryAfterSeconds: number | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -74,7 +77,12 @@ async function request<T>(path: string, options: RequestInit = {}, key?: string)
 
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    throw new ApiError(response.status, describeDetail(body?.detail, response.statusText))
+    const retryAfter = Number(response.headers.get('Retry-After'))
+    throw new ApiError(
+      response.status,
+      describeDetail(body?.detail, response.statusText),
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+    )
   }
 
   if (response.status === 204) {
@@ -108,15 +116,32 @@ export const defaultResumeExportUrl = (format: 'pdf' | 'docx'): string =>
 
 // --- Admin: verifying a key before it's saved ---
 
+export type KeyCheck =
+  | { result: 'ok' }
+  | { result: 'invalid' }
+  | { result: 'locked'; retryAfterSeconds: number | null }
+  | { result: 'error' }
+
 /** Used by the login screen to validate a key the user just typed, before
- * committing it to localStorage via setAdminKey. */
-export async function verifyAdminKey(key: string): Promise<boolean> {
+ * committing it to localStorage via setAdminKey. "locked" means the server
+ * has throttled this address after repeated wrong keys (HTTP 429) — a
+ * different situation from a wrong key, and the right key is refused too. */
+export async function checkAdminKey(key: string): Promise<KeyCheck> {
   try {
     await request('/api/admin/whoami', {}, key)
-    return true
-  } catch {
-    return false
+    return { result: 'ok' }
+  } catch (error) {
+    if (error instanceof ApiError) {
+      if (error.status === 429)
+        return { result: 'locked', retryAfterSeconds: error.retryAfterSeconds }
+      if (error.status === 401 || error.status === 403) return { result: 'invalid' }
+    }
+    return { result: 'error' }
   }
+}
+
+export async function verifyAdminKey(key: string): Promise<boolean> {
+  return (await checkAdminKey(key)).result === 'ok'
 }
 
 // --- Admin: resume CRUD ---

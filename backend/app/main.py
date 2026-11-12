@@ -14,7 +14,7 @@ from starlette.types import Receive, Scope, Send
 from app.api.admin import router as admin_router
 from app.api.public import router as public_resumes_router
 from app.core.config import get_settings
-from app.core.security import AdminBearerAuthMiddleware
+from app.core.security import AdminBearerAuthMiddleware, warn_if_admin_key_is_weak
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.db import get_engine
 from app.mcp_server import build_mcp_asgi_app, build_mcp_server
@@ -36,6 +36,8 @@ def _run_migrations() -> None:
     database, and it's a no-op once a database is already at head.
     """
     alembic_config = Config(str(_BACKEND_DIR / "alembic.ini"))
+    # The app owns logging; see migrations/env.py.
+    alembic_config.attributes["configure_logger"] = False
     engine = get_engine()
     if engine.dialect.name != "postgresql":
         command.upgrade(alembic_config, "head")
@@ -77,6 +79,7 @@ class _MCPDispatch:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    warn_if_admin_key_is_weak()
     _run_migrations()
     mcp_server = build_mcp_server()
     app.state.mcp_asgi_app = build_mcp_asgi_app(mcp_server)

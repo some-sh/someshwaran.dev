@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     #   python -c "import secrets; print(secrets.token_urlsafe(32))"
     admin_api_key: str | None = None
 
+    # Failed admin-key attempts allowed per client address within the window;
+    # past that the address is refused (429) until the window passes. See
+    # app/core/rate_limit.py for what this does and does not protect against.
+    admin_auth_max_failures: int = 10
+    admin_auth_window_seconds: int = 300
+
     # Comma-separated, not a JSON list: keeps a plain env var usable
     # (APP_CORS_ALLOWED_ORIGINS="https://someshwaran.dev,http://localhost:5173")
     # instead of fighting pydantic-settings' JSON parsing for list fields.

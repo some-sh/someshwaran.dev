@@ -14,14 +14,23 @@ dependency injection) both call it, so there is exactly one comparison to
 get right rather than a second, parallel one growing on either surface.
 """
 
+import logging
 import secrets
+from collections.abc import Mapping
+from dataclasses import dataclass
+from functools import lru_cache
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.config import get_settings
+from app.core.rate_limit import FailureLimiter
+
+logger = logging.getLogger("app.security")
+
+_RECOMMENDED_KEY_LENGTH = 32
 
 _bearer_scheme = HTTPBearer(
     auto_error=True,
@@ -42,11 +51,81 @@ def is_valid_admin_key(token: str | None) -> bool:
     return secrets.compare_digest(token, admin_key)
 
 
+def warn_if_admin_key_is_weak() -> None:
+    """Logs (never the key itself) when the admin key is missing or short.
+
+    A warning, not an error: refusing to start over a short key would lock the
+    owner out of their own deployment. A key from
+    ``secrets.token_urlsafe(32)`` is 43 characters and cannot be guessed; a
+    short or human-chosen one can."""
+    key = get_settings().admin_api_key
+    if not key:
+        logger.warning("APP_ADMIN_API_KEY is not set: every admin and MCP request will be refused.")
+    elif len(key) < _RECOMMENDED_KEY_LENGTH:
+        logger.warning(
+            "APP_ADMIN_API_KEY is only %d characters. Use %d or more random characters, e.g. "
+            'python -c "import secrets; print(secrets.token_urlsafe(32))".',
+            len(key),
+            _RECOMMENDED_KEY_LENGTH,
+        )
+
+
+@lru_cache
+def get_auth_limiter() -> FailureLimiter:
+    settings = get_settings()
+    return FailureLimiter(settings.admin_auth_max_failures, settings.admin_auth_window_seconds)
+
+
+def client_identity(headers: Mapping[str, str], peer: str | None) -> str:
+    """Who to count failed attempts against: the client address as reported by
+    the proxy in front of the app (``CF-Connecting-IP``, else the first
+    ``X-Forwarded-For`` hop), else the socket peer. Those headers are only as
+    trustworthy as the proxy — see app/core/rate_limit.py. ``headers`` must
+    have lower-case names (Starlette's request.headers is case-insensitive)."""
+    forwarded = headers.get("x-forwarded-for", "").split(",")[0].strip()
+    connecting = headers.get("cf-connecting-ip", "").strip()
+    return (connecting or forwarded or peer or "unknown")[:64].lower()
+
+
+@dataclass(frozen=True)
+class AuthResult:
+    ok: bool
+    # Set (and ok is False) when the caller is locked out; seconds to wait.
+    retry_after: int | None = None
+
+
+def authenticate(token: str | None, identity: str) -> AuthResult:
+    """The single admin-auth decision, shared by REST and MCP: lockout check,
+    then the key check, then failure/success bookkeeping."""
+    limiter = get_auth_limiter()
+    wait = limiter.retry_after(identity)
+    if wait is not None:
+        return AuthResult(ok=False, retry_after=wait)
+    if is_valid_admin_key(token):
+        limiter.clear(identity)
+        return AuthResult(ok=True)
+    limiter.record_failure(identity)
+    return AuthResult(ok=False)
+
+
+def _locked_out(retry_after: int) -> dict[str, str]:
+    return {"Retry-After": str(retry_after)}
+
+
 def require_admin(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> None:
     """FastAPI dependency guarding admin-only routes."""
-    if not is_valid_admin_key(credentials.credentials):
+    identity = client_identity(request.headers, request.client.host if request.client else None)
+    result = authenticate(credentials.credentials, identity)
+    if result.retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Try again later.",
+            headers=_locked_out(result.retry_after),
+        )
+    if not result.ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key",
@@ -82,12 +161,28 @@ class AdminBearerAuthMiddleware:
             await self._app(scope, receive, send)
             return
 
-        if not is_valid_admin_key(_bearer_token_from_scope(scope)):
-            response = JSONResponse(
-                {"detail": "Invalid or missing API key"},
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        client = scope.get("client")
+        identity = client_identity(
+            {
+                name.decode("latin-1").lower(): value.decode("latin-1")
+                for name, value in scope["headers"]
+            },
+            client[0] if client else None,
+        )
+        result = authenticate(_bearer_token_from_scope(scope), identity)
+        if not result.ok:
+            if result.retry_after is not None:
+                response = JSONResponse(
+                    {"detail": "Too many failed attempts. Try again later."},
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    headers=_locked_out(result.retry_after),
+                )
+            else:
+                response = JSONResponse(
+                    {"detail": "Invalid or missing API key"},
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             await response(scope, receive, send)
             return
 
