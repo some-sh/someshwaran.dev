@@ -8,15 +8,20 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from starlette.types import Receive, Scope, Send
 
 from app.api.admin import router as admin_router
 from app.api.public import router as public_resumes_router
 from app.core.config import get_settings
 from app.core.security import AdminBearerAuthMiddleware
+from app.db import get_engine
 from app.mcp_server import build_mcp_asgi_app, build_mcp_server
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+# Arbitrary constant identifying "the schema migration" to pg_advisory_lock.
+_MIGRATION_LOCK_KEY = 7_283_001
 
 
 def _run_migrations() -> None:
@@ -29,7 +34,24 @@ def _run_migrations() -> None:
     settings the app itself uses, so this always targets the right
     database, and it's a no-op once a database is already at head.
     """
-    command.upgrade(Config(str(_BACKEND_DIR / "alembic.ini")), "head")
+    alembic_config = Config(str(_BACKEND_DIR / "alembic.ini"))
+    engine = get_engine()
+    if engine.dialect.name != "postgresql":
+        command.upgrade(alembic_config, "head")
+        return
+    # With Postgres the app can run as several instances that all start (and
+    # migrate) at once after a deploy; two concurrent first-time
+    # `CREATE TABLE`s would collide. A session-level advisory lock held on its
+    # own connection makes the others wait, then find the schema already at
+    # head. (SQLite is a single-process file, so it needs none of this.)
+    with engine.connect() as lock_connection:
+        lock_connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _MIGRATION_LOCK_KEY})
+        try:
+            command.upgrade(alembic_config, "head")
+        finally:
+            lock_connection.execute(
+                text("SELECT pg_advisory_unlock(:key)"), {"key": _MIGRATION_LOCK_KEY}
+            )
 
 
 class _MCPDispatch:
