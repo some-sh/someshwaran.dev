@@ -33,6 +33,23 @@ Config (DB URL, admin API key, etc.) comes from `app/core/config.py`, overridabl
 `APP_`-prefixed env vars or a `backend/.env` file — the same settings both the app and
 Alembic's `env.py` read, so migrations always target the database the app actually uses.
 
+**Database.** Local dev and most tests use SQLite (`sqlite:///./data/app.db`, nothing to set up).
+**Production uses Postgres**: a SQLite file lives on the container's filesystem, which every
+deploy replaces, so anything written there is lost on the next deploy. The app reads
+`APP_DATABASE_URL`, or the plain `DATABASE_URL` that FastAPI Cloud's Neon integration injects
+(`APP_DATABASE_URL` wins if both are set); `postgres://` / `postgresql://` URLs are accepted as
+given and routed to psycopg 3. Neon scales to zero when idle, so the first request after a quiet
+spell can be slower. Migrations run at startup under a Postgres advisory lock, so several
+instances starting at once after a deploy don't race on first-time table creation.
+
+To run the Postgres-only tests locally (they are skipped otherwise; CI runs them against a
+service container), point `APP_TEST_POSTGRES_URL` at a throwaway database whose name contains
+`test` — the tests wipe its `public` schema and refuse any other name:
+
+```bash
+APP_TEST_POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/app_test uv run pytest
+```
+
 ### Auth
 
 One shared mechanism (`app/core/security.py`) guards both the admin web routes and, from
@@ -182,8 +199,8 @@ docker build -t someshwaran-dev .
 docker run -p 8000:8000 -e APP_ADMIN_API_KEY=... -v app-data:/app/data someshwaran-dev
 ```
 
-SQLite is a single file, so mount a volume (`/app/data`, matching the default
-`APP_DATABASE_URL`) for anything but throwaway/local use. Alembic migrations still run at
+Without `DATABASE_URL`/`APP_DATABASE_URL` this uses SQLite, a single file: mount a volume
+(`/app/data`) for anything but throwaway/local use, or point it at Postgres. Alembic migrations still run at
 process startup (`app/main.py`'s `lifespan`) — no separate migration step needed here either.
 
 ## E2E
