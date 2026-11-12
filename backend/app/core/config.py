@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     )
     db_echo: bool = False
 
+    # Interactive API docs (/docs, /redoc, /openapi.json). Off by default: on a
+    # public deployment they advertise every admin route. Set APP_ENABLE_DOCS=true
+    # for local development.
+    enable_docs: bool = False
+
     # Shared secret for the one admin auth mechanism (see app/core/security.py).
     # None by default so a deployment with no key configured fails closed
     # instead of silently trusting any bearer token. Generate one with:
