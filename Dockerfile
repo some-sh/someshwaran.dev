@@ -19,7 +19,7 @@ RUN npm run build
 
 # Matches the Python version CI pins (see .github/workflows/ci.yml) — one
 # version across dev, CI, and this image, rather than three to keep in sync.
-FROM python:3.11-slim AS backend
+FROM python:3.15-slim AS backend
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
