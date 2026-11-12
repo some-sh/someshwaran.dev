@@ -78,26 +78,34 @@ def set_default_resume(resume_id: int, session: Session = Depends(get_session)) 
 
 
 @router.get("/resumes/{resume_id}/export.pdf")
-def export_resume_pdf(resume_id: int, session: Session = Depends(get_session)) -> Response:
+def export_resume_pdf(
+    resume_id: int,
+    template: export_service.Template = export_service.DEFAULT_TEMPLATE,
+    session: Session = Depends(get_session),
+) -> Response:
     resume = resume_service.get_resume(session, resume_id)
     if resume is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Resume not found")
     filename = f"{export_service.slugify_filename(resume.name)}.pdf"
     return Response(
-        content=export_service.render_resume_pdf(resume),
+        content=export_service.render_resume_pdf(resume, template),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
 @router.get("/resumes/{resume_id}/export.docx")
-def export_resume_docx(resume_id: int, session: Session = Depends(get_session)) -> Response:
+def export_resume_docx(
+    resume_id: int,
+    template: export_service.Template = export_service.DEFAULT_TEMPLATE,
+    session: Session = Depends(get_session),
+) -> Response:
     resume = resume_service.get_resume(session, resume_id)
     if resume is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Resume not found")
     filename = f"{export_service.slugify_filename(resume.name)}.docx"
     return Response(
-        content=export_service.render_resume_docx(resume),
+        content=export_service.render_resume_docx(resume, template),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

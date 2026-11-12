@@ -153,3 +153,25 @@ async def test_build_mcp_server_returns_a_fresh_instance_each_call() -> None:
     not-yet-run session manager) on every startup — see build_mcp_server's
     docstring."""
     assert build_mcp_server() is not build_mcp_server()
+
+
+@pytest.mark.anyio
+async def test_headline_and_grouped_highlights_work_through_the_tools(client: Client) -> None:
+    args = _create_args()
+    args["data"]["headline"] = "Senior SDET | Python"
+    args["data"]["experience"] = [
+        {
+            "company": "Acme",
+            "role": "SDET",
+            "start_date": "2020-01-01",
+            "highlights": ["plain string", {"text": "grouped", "group": "Platform"}],
+        }
+    ]
+
+    created = await client.call_tool("create_resume", args)
+
+    assert created.structured_content["headline"] == "Senior SDET | Python"
+    assert created.structured_content["experience"][0]["highlights"] == [
+        {"text": "plain string", "group": None},
+        {"text": "grouped", "group": "Platform"},
+    ]

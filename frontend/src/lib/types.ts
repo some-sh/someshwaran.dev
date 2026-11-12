@@ -22,6 +22,12 @@ export interface Skill {
   category: string | null
 }
 
+/** One bullet under an experience entry; ``group`` is an optional sub-heading. */
+export interface Highlight {
+  text: string
+  group: string | null
+}
+
 export interface Experience {
   id: number
   company: string
@@ -29,7 +35,7 @@ export interface Experience {
   location: string | null
   start_date: string // YYYY-MM-DD
   end_date: string | null
-  highlights: string[]
+  highlights: Highlight[]
 }
 
 export interface Project {
@@ -61,6 +67,7 @@ export interface Resume {
   id: number
   name: string
   is_default: boolean
+  headline: string
   summary: string
   created_at: string
   updated_at: string
@@ -91,6 +98,7 @@ export type CertificationInput = Omit<Certification, 'id'>
 
 export interface ResumeInput {
   name: string
+  headline: string
   summary: string
   personal_info: PersonalInfoInput
   skills: SkillInput[]

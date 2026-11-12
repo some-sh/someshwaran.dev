@@ -55,3 +55,40 @@ def test_default_resume_export_pdf_and_docx(client, admin_headers):
     docx = client.get("/api/resumes/default/export.docx")
     assert docx.status_code == 200
     assert docx.content[:2] == b"PK"
+
+
+def test_export_accepts_the_ats_template_and_rejects_unknown_ones(client, admin_headers):
+    _create_and_set_default(client, admin_headers)
+
+    assert client.get("/api/resumes/default/export.pdf?template=ats").status_code == 200
+    assert client.get("/api/resumes/default/export.docx?template=ats").status_code == 200
+    # An unknown template is a client error, not a crash.
+    assert client.get("/api/resumes/default/export.pdf?template=nope").status_code == 422
+    assert client.get("/api/resumes/default/export.docx?template=nope").status_code == 422
+
+
+def test_headline_and_grouped_highlights_reach_the_public_page_data(client, admin_headers):
+    payload = _create_payload("With extras") | {
+        "headline": "Senior SDET | Python",
+        "experience": [
+            {
+                "company": "Acme",
+                "role": "SDET",
+                "start_date": "2020-01-01",
+                "highlights": [
+                    "plain string from an older client",
+                    {"text": "grouped bullet", "group": "Platform"},
+                ],
+            }
+        ],
+    }
+    resume_id = client.post("/api/admin/resumes", json=payload, headers=admin_headers).json()["id"]
+    client.post(f"/api/admin/resumes/{resume_id}/set-default", headers=admin_headers)
+
+    body = client.get("/api/resumes/default").json()
+
+    assert body["headline"] == "Senior SDET | Python"
+    assert body["experience"][0]["highlights"] == [
+        {"text": "plain string from an older client", "group": None},
+        {"text": "grouped bullet", "group": "Platform"},
+    ]

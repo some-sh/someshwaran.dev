@@ -38,6 +38,7 @@ describe('AdminResumeEditorPage', () => {
           id: 9,
           name: 'My resume',
           is_default: false,
+          headline: '',
           summary: '',
           created_at: '2024-01-01T00:00:00',
           updated_at: '2024-01-01T00:00:00',
@@ -90,6 +91,7 @@ describe('AdminResumeEditorPage', () => {
         id: 3,
         name: 'Existing resume',
         is_default: false,
+        headline: '',
         summary: 'A summary.',
         created_at: '2024-01-01T00:00:00',
         updated_at: '2024-01-01T00:00:00',
@@ -129,5 +131,106 @@ describe('AdminResumeEditorPage', () => {
     await user.click(screen.getByRole('button', { name: /add skill/i }))
 
     expect(screen.queryAllByLabelText(/^name$/i)).toHaveLength(before + 1)
+  })
+  it('loads the headline and sends an edited one on save', async () => {
+    // A fresh Response per call: a body can only be read once, and this test
+    // fetches twice (load, then save).
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({
+          id: 3,
+          name: 'Existing resume',
+          is_default: false,
+          headline: 'Old headline',
+          summary: '',
+          created_at: '2024-01-01T00:00:00',
+          updated_at: '2024-01-01T00:00:00',
+          personal_info: {
+            id: 1,
+            full_name: 'Grace Hopper',
+            email: 'grace@example.com',
+            phone: null,
+            location: null,
+            website: null,
+            github: null,
+            linkedin: null,
+          },
+          skills: [],
+          experience: [],
+          projects: [],
+          education: [],
+          certifications: [],
+        }),
+      ),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/admin/resumes/3')
+    const headline = await screen.findByLabelText(/headline/i)
+    expect(headline).toHaveValue('Old headline')
+
+    await user.clear(headline)
+    await user.type(headline, 'New headline')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    const patch = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+    expect(JSON.parse(patch![1].body).headline).toBe('New headline')
+  })
+
+  it('keeps blank lines while typing highlights and saves ## groups as structured bullets', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        {
+          id: 9,
+          name: 'r',
+          is_default: false,
+          headline: '',
+          summary: '',
+          created_at: '2024-01-01T00:00:00',
+          updated_at: '2024-01-01T00:00:00',
+          personal_info: {
+            id: 1,
+            full_name: 'Ada',
+            email: 'a@example.com',
+            phone: null,
+            location: null,
+            website: null,
+            github: null,
+            linkedin: null,
+          },
+          skills: [],
+          experience: [],
+          projects: [],
+          education: [],
+          certifications: [],
+        },
+        201,
+      ),
+    )
+    const user = userEvent.setup()
+
+    renderApp('/admin/resumes/new')
+    await screen.findByRole('heading', { name: /new resume/i })
+    await user.type(screen.getByLabelText(/internal name/i), 'r')
+    await user.type(screen.getByLabelText(/full name/i), 'Ada')
+    await user.type(screen.getByLabelText(/^email$/i), 'a@example.com')
+    await user.click(screen.getByRole('button', { name: /add role/i }))
+    await user.type(screen.getByLabelText(/^company$/i), 'Acme')
+    await user.type(screen.getByLabelText(/^role$/i), 'SDET')
+    await user.type(screen.getByLabelText(/^start date$/i), '2020-01-01')
+
+    const highlights = screen.getByLabelText(/^highlights/i)
+    // {Enter} at the end of a line must stay in the box (it used to be dropped).
+    await user.type(highlights, 'first{Enter}## Platform{Enter}second{Enter}third')
+    expect(highlights).toHaveValue('first\n## Platform\nsecond\nthird')
+
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(JSON.parse(options.body).experience[0].highlights).toEqual([
+      { text: 'first', group: null },
+      { text: 'second', group: 'Platform' },
+      { text: 'third', group: 'Platform' },
+    ])
   })
 })

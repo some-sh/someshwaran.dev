@@ -118,6 +118,7 @@ describe('createResume', () => {
   it('throws without making a request when no admin key is set', async () => {
     const input: ResumeInput = {
       name: 'x',
+      headline: '',
       summary: '',
       personal_info: {
         full_name: 'x',
@@ -145,6 +146,7 @@ describe('createResume', () => {
 
     const input: ResumeInput = {
       name: 'x',
+      headline: '',
       summary: '',
       personal_info: {
         full_name: 'x',
