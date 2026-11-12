@@ -14,21 +14,16 @@ builds that format.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import date
-from urllib.parse import urlparse
 
+from app.core.urls import display_url, safe_url
 from app.models.resume import Education, Experience, Resume
 from app.schemas.resume import normalize_highlights
 
 # Fixed English month names rather than strftime("%b"), which depends on the
 # server's locale and would make output differ between environments.
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
-_LINKABLE_SCHEMES = {"http", "https", "mailto"}
-_HAS_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
-_HOST_AND_PORT = re.compile(r"^[^/:\s]+:\d+(/|$)")
 
 
 @dataclass(frozen=True)
@@ -116,37 +111,6 @@ def education_years(edu: Education) -> str:
     if start and end and start != end:
         return f"{start} – {end}"
     return end or start
-
-
-def safe_url(value: str | None) -> str | None:
-    """The URL if it is safe to emit as a link (http, https or mailto), else
-    None. A bare host ("linkedin.com/in/x", "example.com:8080") gets https://.
-    Anything that starts with some other scheme — javascript:, data:, file: —
-    is shown as text and never linked; note "javascript:alert(1)" has no "//",
-    so "has a scheme" is decided by the leading ``name:``, not by "://"."""
-    if not value or not value.strip():
-        return None
-    candidate = value.strip()
-    if not _HAS_SCHEME.match(candidate) or _HOST_AND_PORT.match(candidate):
-        candidate = f"https://{candidate}"
-    parsed = urlparse(candidate)
-    scheme = parsed.scheme.lower()
-    if scheme not in _LINKABLE_SCHEMES:
-        return None
-    if scheme == "mailto":
-        return candidate if parsed.path else None
-    return candidate if parsed.netloc else None
-
-
-def display_url(value: str) -> str:
-    """'https://www.linkedin.com/in/x/' -> 'linkedin.com/in/x'."""
-    shown = value.strip()
-    for prefix in ("https://", "http://", "mailto:"):
-        if shown.lower().startswith(prefix):
-            shown = shown[len(prefix) :]
-    if shown.lower().startswith("www."):
-        shown = shown[4:]
-    return shown.rstrip("/")
 
 
 def _web_link(value: str | None) -> Link | None:

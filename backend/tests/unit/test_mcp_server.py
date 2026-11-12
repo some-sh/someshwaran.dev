@@ -175,3 +175,15 @@ async def test_headline_and_grouped_highlights_work_through_the_tools(client: Cl
         {"text": "plain string", "group": None},
         {"text": "grouped", "group": "Platform"},
     ]
+
+
+@pytest.mark.anyio
+async def test_mcp_writes_are_validated_like_rest_writes(client: Client) -> None:
+    args = _create_args()
+    args["data"]["personal_info"]["website"] = "javascript:alert(1)"
+
+    result = await client.call_tool("create_resume", args)
+
+    assert result.is_error
+    listed = await client.call_tool("list_resumes", {})
+    assert listed.structured_content["result"] == []

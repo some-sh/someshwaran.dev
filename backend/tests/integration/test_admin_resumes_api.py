@@ -150,3 +150,43 @@ def test_headline_can_be_set_and_patched(client, admin_headers):
 
     assert patched.status_code == 200
     assert patched.json()["headline"] == "Second"
+
+
+def test_unsafe_links_and_oversized_values_are_rejected_with_422(client, admin_headers):
+    base = _create_payload()
+
+    unsafe = base | {
+        "personal_info": {
+            "full_name": "Ada",
+            "email": "ada@example.com",
+            "website": "javascript:alert(1)",
+        }
+    }
+    assert client.post("/api/admin/resumes", json=unsafe, headers=admin_headers).status_code == 422
+
+    huge = base | {"summary": "x" * 4001}
+    assert client.post("/api/admin/resumes", json=huge, headers=admin_headers).status_code == 422
+
+    bad_email = base | {"personal_info": {"full_name": "Ada", "email": "nope"}}
+    assert (
+        client.post("/api/admin/resumes", json=bad_email, headers=admin_headers).status_code == 422
+    )
+
+    # Nothing was stored by any of the rejected requests.
+    assert client.get("/api/admin/resumes", headers=admin_headers).json() == []
+
+
+def test_a_patch_with_an_unsafe_link_is_rejected_and_changes_nothing(client, admin_headers):
+    resume_id = client.post(
+        "/api/admin/resumes", json=_create_payload(), headers=admin_headers
+    ).json()["id"]
+
+    response = client.patch(
+        f"/api/admin/resumes/{resume_id}",
+        json={"personal_info": {"full_name": "Ada", "email": "a@example.com", "github": "data:x"}},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 422
+    stored = client.get(f"/api/admin/resumes/{resume_id}", headers=admin_headers).json()
+    assert stored["personal_info"]["github"] is None

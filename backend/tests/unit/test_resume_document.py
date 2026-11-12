@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 
+from app.core.urls import display_url, safe_url
 from app.models.resume import (
     Certification,
     Education,
@@ -15,11 +16,9 @@ from app.models.resume import (
 )
 from app.services.resume_document import (
     build_document,
-    display_url,
     education_years,
     experience_dates,
     month_year,
-    safe_url,
 )
 
 # --- dates ---

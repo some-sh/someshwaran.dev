@@ -37,6 +37,29 @@ export function clearAdminKey(): void {
   localStorage.removeItem(ADMIN_KEY_STORAGE_KEY)
 }
 
+/**
+ * Turns an API error body's ``detail`` into text a person can act on. FastAPI
+ * sends a string for most errors but a list of ``{loc, msg}`` items for
+ * validation failures (422); showing only the status text ("Unprocessable
+ * Entity") would hide which field was wrong.
+ */
+export function describeDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item?.msg !== 'string') return null
+        const path = Array.isArray(item.loc)
+          ? item.loc.filter((part: unknown) => part !== 'body').join('.')
+          : ''
+        return path ? `${path}: ${item.msg}` : item.msg
+      })
+      .filter((part): part is string => part !== null)
+    if (parts.length > 0) return parts.slice(0, 3).join('; ')
+  }
+  return fallback
+}
+
 async function request<T>(path: string, options: RequestInit = {}, key?: string): Promise<T> {
   const headers = new Headers(options.headers)
   headers.set('Accept', 'application/json')
@@ -51,8 +74,7 @@ async function request<T>(path: string, options: RequestInit = {}, key?: string)
 
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    const message = body?.detail ?? response.statusText
-    throw new ApiError(response.status, typeof message === 'string' ? message : response.statusText)
+    throw new ApiError(response.status, describeDetail(body?.detail, response.statusText))
   }
 
   if (response.status === 204) {
