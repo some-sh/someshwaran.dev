@@ -40,6 +40,7 @@ def _positioned(model: type[_M], items: Sequence[BaseModel]) -> list[_M]:
 def create_resume(session: Session, data: ResumeCreate) -> Resume:
     resume = Resume(
         name=data.name,
+        headline=data.headline,
         summary=data.summary,
         personal_info=PersonalInfo(**data.personal_info.model_dump()),
         skills=_positioned(Skill, data.skills),
@@ -69,6 +70,8 @@ def update_resume(session: Session, resume_id: int, data: ResumeUpdate) -> Resum
 
     if data.name is not None:
         resume.name = data.name
+    if data.headline is not None:
+        resume.headline = data.headline
     if data.summary is not None:
         resume.summary = data.summary
     if data.personal_info is not None:
@@ -183,6 +186,7 @@ def clone_resume(session: Session, resume_id: int) -> Resume | None:
     _omit = {"id", "resume_id"}
     clone = Resume(
         name=f"{source.name} (copy)",
+        headline=source.headline,
         summary=source.summary,
         is_default=False,
         personal_info=(

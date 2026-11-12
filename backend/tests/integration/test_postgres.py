@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -138,7 +139,7 @@ def test_concurrent_startups_migrate_a_fresh_database_exactly_once(postgres_url:
     assert errors == []
     with get_engine().connect() as connection:
         version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "c3e6a9d4f2b8"  # head
+    assert version == ScriptDirectory.from_config(_alembic_config()).get_current_head()
 
 
 def _new_resume(name: str) -> ResumeCreate:

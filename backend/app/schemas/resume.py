@@ -11,9 +11,11 @@ SQLAlchemy relationship machinery) over the wire directly.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date, datetime
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, BeforeValidator, ConfigDict
 
 
 class PersonalInfoInput(BaseModel):
@@ -31,13 +33,45 @@ class SkillInput(BaseModel):
     category: str | None = None
 
 
+class Highlight(BaseModel):
+    """One bullet under an experience entry. ``group`` is an optional
+    sub-heading the bullet sits under (e.g. "Release and installation
+    quality"); consecutive bullets with the same group render together under
+    it, and bullets with no group render as a plain list."""
+
+    text: str
+    group: str | None = None
+
+
+def normalize_highlights(raw: Iterable[Any] | None) -> list[Highlight]:
+    """Accepts the shapes highlights have been stored and sent in: plain
+    strings (the original format, still in existing rows and still accepted
+    from API/MCP clients), ``{"text", "group"}`` dicts, or Highlight objects.
+    The one place that coercion lives, used for input validation and by the
+    renderers when they read straight from the ORM."""
+    result: list[Highlight] = []
+    for item in raw or []:
+        if isinstance(item, Highlight):
+            result.append(item)
+        elif isinstance(item, str):
+            result.append(Highlight(text=item))
+        else:
+            result.append(Highlight.model_validate(item))
+    return result
+
+
+# Validates on every Experience schema (create/update input and read), so a row
+# still holding plain strings is served as structured highlights.
+_Highlights = Annotated[list[Highlight], BeforeValidator(normalize_highlights)]
+
+
 class ExperienceInput(BaseModel):
     company: str
     role: str
     location: str | None = None
     start_date: date
     end_date: date | None = None
-    highlights: list[str] = []
+    highlights: _Highlights = []
 
 
 class ProjectInput(BaseModel):
@@ -64,6 +98,9 @@ class CertificationInput(BaseModel):
 
 class ResumeCreate(BaseModel):
     name: str
+    # One-line professional headline shown under the name, e.g.
+    # "Senior SDET | Test Automation & Infrastructure | Python, Playwright".
+    headline: str = ""
     summary: str = ""
     personal_info: PersonalInfoInput
     skills: list[SkillInput] = []
@@ -83,6 +120,7 @@ class ResumeUpdate(BaseModel):
     """
 
     name: str | None = None
+    headline: str | None = None
     summary: str | None = None
     personal_info: PersonalInfoInput | None = None
     skills: list[SkillInput] | None = None
@@ -131,6 +169,7 @@ class ResumeRead(BaseModel):
     id: int
     name: str
     is_default: bool
+    headline: str
     summary: str
     created_at: datetime
     updated_at: datetime

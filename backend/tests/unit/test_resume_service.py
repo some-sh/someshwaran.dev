@@ -41,7 +41,8 @@ def test_create_resume_persists_nested_content(session):
     assert resume.personal_info.full_name == "Ada Lovelace"
     assert [s.name for s in resume.skills] == ["Python", "Go"]
     assert resume.experience[0].company == "Acme"
-    assert resume.experience[0].highlights == ["Built the test framework"]
+    # Stored structured; plain strings are accepted on input.
+    assert resume.experience[0].highlights == [{"text": "Built the test framework", "group": None}]
     assert resume.projects[0].name == "OpTools"
     assert resume.education[0].institution == "State U"
     assert resume.certifications[0].name == "AWS SAA"
@@ -227,3 +228,59 @@ def test_set_default_moves_the_default_without_tripping_the_index(session):
 
     defaults = [r for r in resume_service.list_resumes(session) if r.is_default]
     assert [r.name for r in defaults] == ["two"]
+
+
+# --- headline and grouped highlights ---
+
+
+def test_headline_is_stored_updated_and_cloned(session):
+    data = _sample_create()
+    data.headline = "Senior SDET | Python, Playwright"
+    resume = resume_service.create_resume(session, data)
+    assert resume.headline == "Senior SDET | Python, Playwright"
+
+    updated = resume_service.update_resume(session, resume.id, ResumeUpdate(headline="New"))
+    assert updated is not None and updated.headline == "New"
+
+    unchanged = resume_service.update_resume(session, resume.id, ResumeUpdate(summary="s"))
+    assert unchanged is not None and unchanged.headline == "New"  # omitted = untouched
+
+    clone = resume_service.clone_resume(session, resume.id)
+    assert clone is not None and clone.headline == "New"
+
+
+def test_highlights_keep_their_group_and_accept_plain_strings(session):
+    data = _sample_create()
+    data.experience = [
+        ExperienceInput(
+            company="Acme",
+            role="SDET",
+            start_date="2022-01-01",
+            highlights=[
+                "plain string, as older clients send it",
+                {"text": "grouped", "group": "Platform"},
+            ],
+        )
+    ]
+
+    resume = resume_service.create_resume(session, data)
+
+    assert resume.experience[0].highlights == [
+        {"text": "plain string, as older clients send it", "group": None},
+        {"text": "grouped", "group": "Platform"},
+    ]
+
+
+def test_normalize_highlights_reads_every_stored_shape():
+    from app.schemas.resume import Highlight, normalize_highlights
+
+    result = normalize_highlights(
+        ["old row", {"text": "new row", "group": "G"}, Highlight(text="obj")]
+    )
+
+    assert [(h.text, h.group) for h in result] == [
+        ("old row", None),
+        ("new row", "G"),
+        ("obj", None),
+    ]
+    assert normalize_highlights(None) == []

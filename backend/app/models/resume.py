@@ -22,7 +22,7 @@ file are quoted individually instead.
 """
 
 from datetime import UTC, date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import JSON, Column, Index, text
 from sqlmodel import Field, Relationship, SQLModel
@@ -52,6 +52,7 @@ class Resume(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True)  # internal label, e.g. "Backend-focused"
     is_default: bool = Field(default=False, index=True)
+    headline: str = ""
     summary: str = ""
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
@@ -135,7 +136,9 @@ class Experience(SQLModel, table=True):
     location: str | None = None
     start_date: date
     end_date: date | None = None  # None == current position
-    highlights: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    # JSON list of {"text", "group"} objects. Older rows hold plain strings;
+    # app.schemas.resume.normalize_highlights reads both.
+    highlights: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
     order_index: int = 0
 
     resume: Resume = Relationship(back_populates="experience")
