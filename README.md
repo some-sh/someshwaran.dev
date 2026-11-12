@@ -42,6 +42,13 @@ given and routed to psycopg 3. Neon scales to zero when idle, so the first reque
 spell can be slower. Migrations run at startup under a Postgres advisory lock, so several
 instances starting at once after a deploy don't race on first-time table creation.
 
+**Data guarantees.** List sections (skills, experience, ...) are rendered in a stored
+`order_index`, assigned from input order on create, update and clone, with `id` as a tiebreak —
+never left to whatever order the database returns. "At most one default resume" is enforced by a
+partial unique index (`uq_resumes_single_default`), and `set_default_resume` serializes concurrent
+callers with a Postgres advisory lock. PDF export escapes all resume text before it reaches
+reportlab's markup parser, so resume content is always printed literally.
+
 To run the Postgres-only tests locally (they are skipped otherwise; CI runs them against a
 service container), point `APP_TEST_POSTGRES_URL` at a throwaway database whose name contains
 `test` — the tests wipe its `public` schema and refuse any other name:

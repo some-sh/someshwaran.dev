@@ -4,9 +4,14 @@ callers — no route in this app touches app.models.resume directly."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import TypeVar
 
-from sqlmodel import Session, col, select
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, SQLModel, col, select
 
 from app.models.resume import (
     Certification,
@@ -19,17 +24,29 @@ from app.models.resume import (
 )
 from app.schemas.resume import ResumeCreate, ResumeUpdate
 
+_M = TypeVar("_M", bound=SQLModel)
+
+
+def _positioned(model: type[_M], items: Sequence[BaseModel]) -> list[_M]:
+    """Builds ``model`` rows from input items, recording each one's position.
+
+    Every list section is rendered in ``order_index`` order, so the position
+    has to be written down: left at its default every row ties at 0 and the
+    order is then whatever the database happens to return (insertion order on
+    SQLite, but not something Postgres promises)."""
+    return [model(**item.model_dump(), order_index=index) for index, item in enumerate(items)]
+
 
 def create_resume(session: Session, data: ResumeCreate) -> Resume:
     resume = Resume(
         name=data.name,
         summary=data.summary,
         personal_info=PersonalInfo(**data.personal_info.model_dump()),
-        skills=[Skill(**s.model_dump()) for s in data.skills],
-        experience=[Experience(**e.model_dump()) for e in data.experience],
-        projects=[Project(**p.model_dump()) for p in data.projects],
-        education=[Education(**ed.model_dump()) for ed in data.education],
-        certifications=[Certification(**c.model_dump()) for c in data.certifications],
+        skills=_positioned(Skill, data.skills),
+        experience=_positioned(Experience, data.experience),
+        projects=_positioned(Project, data.projects),
+        education=_positioned(Education, data.education),
+        certifications=_positioned(Certification, data.certifications),
     )
     session.add(resume)
     session.commit()
@@ -62,15 +79,15 @@ def update_resume(session: Session, resume_id: int, data: ResumeUpdate) -> Resum
             for key, value in info.items():
                 setattr(resume.personal_info, key, value)
     if data.skills is not None:
-        resume.skills = [Skill(**s.model_dump()) for s in data.skills]
+        resume.skills = _positioned(Skill, data.skills)
     if data.experience is not None:
-        resume.experience = [Experience(**e.model_dump()) for e in data.experience]
+        resume.experience = _positioned(Experience, data.experience)
     if data.projects is not None:
-        resume.projects = [Project(**p.model_dump()) for p in data.projects]
+        resume.projects = _positioned(Project, data.projects)
     if data.education is not None:
-        resume.education = [Education(**ed.model_dump()) for ed in data.education]
+        resume.education = _positioned(Education, data.education)
     if data.certifications is not None:
-        resume.certifications = [Certification(**c.model_dump()) for c in data.certifications]
+        resume.certifications = _positioned(Certification, data.certifications)
 
     resume.updated_at = datetime.now(UTC)
     session.add(resume)
@@ -91,24 +108,58 @@ def delete_resume(session: Session, resume_id: int) -> bool:
 def get_default_resume(session: Session) -> Resume | None:
     """The one resume the public site and its exports render. None until
     an admin explicitly calls set_default_resume."""
-    return session.exec(select(Resume).where(col(Resume.is_default))).first()
+    return session.exec(
+        select(Resume).where(col(Resume.is_default)).order_by(col(Resume.id))
+    ).first()
+
+
+# Arbitrary constant identifying "changing the default resume" to Postgres.
+_SET_DEFAULT_LOCK_KEY = 7_283_002
 
 
 def set_default_resume(session: Session, resume_id: int) -> Resume | None:
     """Marks resume_id as the one default resume, unsetting any previous
     default in the same transaction.
 
-    SQLite has no partial-unique-index equivalent to enforce "at most one
-    is_default=True" at the schema level, so the invariant lives here —
-    this is the only code path allowed to set is_default=True.
+    Three layers keep "at most one default" true even when requests race (the
+    app can run as several instances, and the MCP server is a second writer):
+
+    1. On Postgres a transaction-scoped advisory lock makes concurrent calls
+       take turns, so they do not collide at all (SQLite serializes writers on
+       its own).
+    2. The partial unique index ``uq_resumes_single_default`` makes the
+       database refuse a second default no matter what.
+    3. A collision that still reaches the index is rolled back and retried
+       once, by which point the other writer has committed.
+
+    This is the only code path allowed to set is_default=True.
     """
+    for attempt in range(2):
+        try:
+            return _set_default(session, resume_id)
+        except IntegrityError:
+            session.rollback()
+            if attempt == 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _set_default(session: Session, resume_id: int) -> Resume | None:
+    if session.get_bind().dialect.name == "postgresql":
+        # Released automatically at commit/rollback.
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SET_DEFAULT_LOCK_KEY})
+
     resume = session.get(Resume, resume_id)
     if resume is None:
         return None
 
     for other in session.exec(select(Resume).where(col(Resume.is_default))).all():
-        other.is_default = False
-        session.add(other)
+        if other.id != resume_id:
+            other.is_default = False
+            session.add(other)
+    # Unset before set, in separate statements: the unique index would reject
+    # a moment with two defaults.
+    session.flush()
 
     resume.is_default = True
     session.add(resume)
