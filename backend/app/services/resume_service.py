@@ -4,7 +4,7 @@ callers — no route in this app touches app.models.resume directly."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlmodel import Session, col, select
 
@@ -72,7 +72,7 @@ def update_resume(session: Session, resume_id: int, data: ResumeUpdate) -> Resum
     if data.certifications is not None:
         resume.certifications = [Certification(**c.model_dump()) for c in data.certifications]
 
-    resume.updated_at = datetime.utcnow()
+    resume.updated_at = datetime.now(UTC)
     session.add(resume)
     session.commit()
     session.refresh(resume)
