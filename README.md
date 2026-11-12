@@ -42,6 +42,24 @@ given and routed to psycopg 3. Neon scales to zero when idle, so the first reque
 spell can be slower. Migrations run at startup under a Postgres advisory lock, so several
 instances starting at once after a deploy don't race on first-time table creation.
 
+**Resume exports.** PDF and DOCX are drawn from one display model
+(`app/services/resume_document.py`: formatted dates, safe links, bullets gathered under their
+sub-headings) by a *template* (`app/services/templates/`). The default and currently only
+template is `ats` — an ATS-plain layout: A4, one column, standard fonts, conventional section
+names, real selectable text, dates right-aligned, clickable email/LinkedIn/GitHub/website links
+(only `http`, `https` and `mailto` are ever linked), no tables, images or icons. Pick a template
+with `?template=ats` on any `export.pdf` / `export.docx` route; an unknown name is a 422. To add
+a template, add its two modules, its name to `Template` in `export_service.py`, and register it.
+Note: layout-aware PDF text extractors return each role and its dates as one line, while
+reading-order ones return the dates as the very next text; if dates must never be separated from
+the role, put them inline instead of right-aligned.
+
+A resume has a `headline` (the line under the name, e.g. "Senior SDET | Test Automation |
+Python") and each experience's `highlights` are `{text, group}` items: consecutive bullets with
+the same `group` render under that sub-heading. Plain-string highlights (the original format) are
+still accepted everywhere and read as ungrouped. In the admin editor, type bullets one per line;
+a line starting with `##` names a group for the bullets after it, and a bare `##` ends the group.
+
 **Data guarantees.** List sections (skills, experience, ...) are rendered in a stored
 `order_index`, assigned from input order on create, update and clone, with `id` as a tiebreak —
 never left to whatever order the database returns. "At most one default resume" is enforced by a
