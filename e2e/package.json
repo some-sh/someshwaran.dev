@@ -8,7 +8,7 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@playwright/test": "^1.65.0",
-    "prettier": "^3.10.0"
+    "@playwright/test": "^1.65.1",
+    "prettier": "^3.10.1"
   }
 }
